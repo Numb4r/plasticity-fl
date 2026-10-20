@@ -80,3 +80,6 @@ Leituras do texto de "Hipóteses e critérios" adotadas no código de análise (
 5. Cada IC é um bootstrap percentil próprio (10 000 reamostragens das sementes, `default_rng(0)`); como o gerador e n são iguais, as reamostragens usam os mesmos índices de semente em todas as condições. Isso não muda o IC marginal de cada condição.
 6. Com menos de 2 sementes o IC é indefinido e o critério sai "não avaliável"; isso não conta como atendido nem como não atendido. A linha final separa "sem vantagem a explicar" (pré-condição de H_part falhou) de "dados insuficientes".
 7. Rótulo da figura de distância: ‖Δθ‖ na tarefa, medida depois do passo SP.
+
+### 2026-10-20 · Redação do Adendo 1, antes de qualquer resultado
+No Adendo 1, "passa o limite" significa **ultrapassa** o limite (média_esq > média_esq(central_aprendizado) + 0,05). Portanto: melhora plasticidade e ultrapassa o limite = "ganho com violação de esquecimento"; melhora plasticidade e respeita o limite (média_esq ≤ limite) = "ganho válido". O código de análise já implementa esse sentido. A comparação do limite usa as médias entre sementes, sem tolerância numérica; os ICs do esquecimento são só informativos.
