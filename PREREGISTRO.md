@@ -157,3 +157,37 @@ O item (c) diz que "a janela principal e a de H_part têm agora 5 referências".
 
 ### 2026-10-20 · Registro do commit da previsão (antes do teste curto)
 A "Previsão do autor" foi commitada sozinha no commit `77f0b55`. O parêntese desatualizado da regra de análise 4 foi corrigido antes, no commit `5d6f599`. O teste curto (`--fase teste_curto`) só foi lançado depois deste registro.
+
+## Desvios v3.1 · Métricas do protocolo de Klein et al. (2026) (2026-10-20)
+Registrado ANTES de mexer no código, depois do teste curto e antes do completo. O teste curto (semente 1000, tarefa A) rodou sem estas métricas; é exploratório.
+
+### Motivo e status
+Alinhar as medidas ao protocolo padrão proposto por Klein et al., "Plasticity Loss in Deep Reinforcement Learning: A Survey" (arXiv 2411.04832, Tabela 3). As métricas novas são **diagnósticas**: não entram nos critérios de H_orc, H_real, H_reg e H_part, nem na `tabela_decisao.md`.
+
+### Pergunta exploratória
+Na condição que perder plasticidade, a norma dos parâmetros e o maior autovalor da Hessiana sobem **antes** da queda da acurácia do contínuo? Isso testa a ordem da cadeia causal da Figura 1 do survey. Não tem critério de decisão nem previsão registrada.
+
+### Métricas novas (colunas acrescentadas aos CSVs existentes; as atuais não mudam)
+a) Norma L2 dos parâmetros por camada linear (l1, l2, l3), pesos e vieses separados, além da norma global que já existe.
+b) Norma do gradiente por camada (pesos e vieses separados), em L1 e em L2, e a L2 global. É o gradiente da entropia cruzada da tarefa sobre todos os pontos da tarefa, numa passada só, sem passo de otimização.
+c) Espectro do gradiente: matriz G com os gradientes por amostra, achatados, de 64 pontos fixos da tarefa (índices sorteados uma vez por semente e tarefa, com semente própria, os mesmos em todas as condições, níveis, momentos e redes). Registra: srank de G (δ = 0,01, Definição 4.1 do survey), cosseno médio entre pares de linhas e fração de pares com cosseno negativo. Os gradientes por amostra são sempre calculados vetorizados (`torch.func.vmap`).
+d) Maior autovalor da Hessiana da perda da tarefa sobre todos os pontos, por power iteration com produtos Hessiana-vetor (autograd duplo), 30 iterações e vetor inicial com semente própria. Estimativa pelo quociente de Rayleigh (autovalor de maior módulo). Registra o valor e se convergiu: variação relativa < 1% nas últimas 5 iterações.
+e) **`srank_feat`** (aprovado pelo autor): srank com δ = 0,01 das ativações da última camada oculta, ao lado do `rank_ef` atual (rank efetivo por entropia), que **não muda**. Assim o srank do gradiente e o das features usam a mesma definição.
+
+### Momentos e onde medir
+- **Início de cada tarefa**: com os rótulos ou dados já trocados e **depois do shrink-and-perturb** (aprovado pelo autor), antes do primeiro passo. **Fim de cada tarefa**: depois do treino.
+- Em todas as condições e níveis m, no modelo contínuo (no FL, o modelo global) e em cada rede nova de referência, nos mesmos dois momentos, como linha de base. Colunas do contínuo com prefixos `ini_` e `fim_`; da rede nova, `nova_ini_` e `nova_fim_` (vazias nas tarefas sem rede nova).
+- A semente 1000 (calibração) não recebe diagnósticos.
+- Regras: tudo numa cópia (`deepcopy`), em modo de avaliação, sem tocar no otimizador e com gerador aleatório próprio (papéis novos de semente, acrescentados no fim da lista).
+
+### Critério de custo (substitui a regra dos 10%, por decisão do autor)
+O critério é o **tempo total do completo**, porque em m=1 a execução é curta e o custo relativo engana. Se o completo crescer mais de 25%, aplicam-se os cortes nesta ordem, parando assim que ficar abaixo: (a) Hessiana e espectro do gradiente num subconjunto fixo de 256 pontos da tarefa, os mesmos índices em todas as condições; (b) power iteration começando do autovetor da medição anterior da mesma rede, mantendo o critério de convergência; (c) Hessiana e espectro só nas tarefas de `tarefas_com_nova`. As normas de parâmetro e de gradiente por camada continuam em todos os pontos, com todos os dados. Os cortes aplicados serão registrados aqui, em bloco datado, antes do completo.
+
+### Testes (acrescentados)
+1. Num problema quadrático com Hessiana conhecida (regressão linear com 0,5 × MSE, de modo que H = XᵀX/n; o adendo original dizia MSE, o que daria 2XᵀX/n e foi corrigido pelo autor), a power iteration acerta o maior autovalor com erro < 1%.
+2. A raiz da soma dos quadrados das normas L2 por camada é igual à norma L2 global, para gradiente e para parâmetros.
+3. Uma condição curta rodada com e sem as métricas novas dá resultados idênticos no contínuo.
+4. O cálculo das métricas não altera nenhum parâmetro, nem o estado do otimizador, nem o modo (train/eval) da rede original.
+
+### Fora do escopo
+`tabela_decisao.md` e as regras de decisão não mudam. A `fig_k1_mecanismo.png` é ampliada (painéis por tarefa de: norma dos parâmetros por camada, norma L2 do gradiente por camada no início da tarefa, srank do gradiente, maior autovalor da Hessiana no início e no fim) para `sem_media_k1`, `fedavg_iid`, `central_passos` e `central_aprendizado`, em m=10 e em m\*, com a rede nova como linha tracejada de referência.
