@@ -26,6 +26,7 @@ T_PADRAO = 30
 T_SEM_PARTICAO = 12
 FRESCA_CADA = 3       # rede nova nas tarefas t com t % 3 == 2 ...
 FRESCA_ULTIMAS = 5    # ... e em todas as 5 últimas tarefas da condição
+JANELA_H_PART = range(7, 12)   # ... e nos índices 7 a 11 (janela de H_part: tarefas 8 a 12), Errata (ii)
 SONDA_CADA = 5        # sondas nas tarefas t com t % 5 == 4
 VERSAO_DADOS = 2      # 2 = professor com logits centralizados (balanceado)
 
@@ -56,5 +57,8 @@ def dispositivo() -> torch.device:
 
 
 def tarefas_com_nova(T: int) -> list[int]:
-    """Tarefas (0-based) em que há rede nova de referência: t % 3 == 2 e as 5 últimas."""
-    return [t for t in range(T) if t % FRESCA_CADA == FRESCA_CADA - 1 or t >= T - FRESCA_ULTIMAS]
+    """Tarefas (0-based) com rede nova de referência (decisão (ii) da Errata, 2026-10-20):
+    t mod 3 = 2, as 5 últimas da condição e a janela de H_part (índices 7 a 11).
+    Com T=30 são 16 tarefas; com T=12 as janelas coincidem e são 7."""
+    return [t for t in range(T)
+            if t % FRESCA_CADA == FRESCA_CADA - 1 or t >= T - FRESCA_ULTIMAS or t in JANELA_H_PART]

@@ -1,5 +1,7 @@
 """Testes simples dos pontos que mais podem invalidar o experimento."""
 import copy
+import tempfile
+from pathlib import Path
 
 import torch
 
@@ -398,7 +400,7 @@ def test_nivel_m_multiplica_rodadas_e_passos():
 
 
 def test_tarefas_com_nova():
-    assert config.tarefas_com_nova(30) == [2, 5, 8, 11, 14, 17, 20, 23, 25, 26, 27, 28, 29]
+    assert config.tarefas_com_nova(30) == [2, 5, 7, 8, 9, 10, 11, 14, 17, 20, 23, 25, 26, 27, 28, 29]
     assert config.tarefas_com_nova(12) == [2, 5, 7, 8, 9, 10, 11]
 
 
@@ -483,7 +485,7 @@ def test_calibrar_nao_interrompe_fora_da_tolerancia(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "PASSOS_MAX_CALIB", 45)
     res = cal.calibrar("A", 1, tmp_path)
     assert res["passos"] in (15, 30, 45) and res["ok"] is False
-    assert abs(res["alvo_acc_nova_fedavg"] - 0.99) < 1e-12        # alvo = média das 13 acc_nova
+    assert abs(res["alvo_acc_nova_fedavg"] - 0.99) < 1e-12        # alvo = média das acc_nova (16 tarefas com T=30)
     assert len(res["tentativas"]) == 3 and res["versao_dados"] == config.VERSAO_DADOS
     assert json.loads((pasta / "calibracao_A_m1.json").read_text())["ok"] is False
 
@@ -572,3 +574,32 @@ def test_params_das_centralizadas_nao_trazem_rodadas_nem_s_local():
     assert c.rodadas is None and c.s_local is None and c.passos == 3750
     f = condicao_base("fedavg_iid", 10)
     assert f.rodadas == 250 and f.s_local == 15
+
+
+def test_redes_novas_extras_nao_alteram_o_continuo(monkeypatch):
+    """As redes novas de referência não podem consumir o gerador nem o estado da rede contínua:
+    com e sem as referências extras, tudo o que é do contínuo sai bit a bit igual."""
+    import pandas as pd
+    from dataclasses import replace
+    import src.condicoes as cs
+    original = cs.tarefas_com_nova          # guarda a função real: o monkeypatch troca em cada rodada
+    colunas = ["acc_cont", "norma", "distancia", "dorm_tau0_l1", "dorm_tau0_l2", "dorm_tau0025_l1",
+               "dorm_tau0025_l2", "rank_ef", "cos_medio", "sonda_razao", "maj_frac"]
+    casos = [
+        (replace(condicao_base("central_passos"), nome="central_SP", T=30, passos=15, sp_lambda=0.8), "A"),      # SP + T=30 inteiro
+        (replace(condicao_base("fedavg_iid"), T=12, rodadas=2), "B_disjunta"),            # FL + matriz de esquecimento
+    ]
+    for cond, tipo in casos:
+        completo = original(cond.T)
+        reduzido = [t for t in completo if t % 3 == 2]            # sem as extras
+        resultados = {}
+        for nome, lista in (("completo", completo), ("reduzido", reduzido), ("nenhuma", [])):
+            monkeypatch.setattr(cs, "tarefas_com_nova", lambda T, lista=lista: lista)
+            resultados[nome] = cs.executar(cond, tipo, 1, Path(tempfile.mkdtemp()))
+        for nome in ("reduzido", "nenhuma"):
+            a, b = resultados["completo"], resultados[nome]
+            pd.testing.assert_frame_equal(a[colunas], b[colunas], check_exact=True)
+            if tipo == "B_disjunta":
+                pd.testing.assert_series_equal(a["esquecimento"], b["esquecimento"], check_exact=True)
+        assert resultados["completo"]["acc_nova"].notna().sum() == len(completo) > len(reduzido)
+        assert resultados["nenhuma"]["acc_nova"].notna().sum() == 0

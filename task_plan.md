@@ -24,4 +24,4 @@ Responder, até quinta-feira, se a vantagem do FedAvg em preservar plasticidade 
 - Python do sistema é 3.10; criado .venv com 3.11 (uv) e torch CPU 2.14.1.
 
 ## Status
-F6: pipeline completo rodando (executor). Auditorias 1-3 sem P0/P1 abertos; código commitado em 0b1c019.
+Passo 5 PARADO: aguardando o usuário preencher "Previsão do autor" no PREREGISTRO.md (auditoria 4: sem P0/P1 no código). Passo 4 (figuras) com o gerador em andamento.
