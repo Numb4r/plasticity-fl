@@ -12,7 +12,7 @@ AMBIGUIDADES do PREREGISTRO.md e como foram implementadas (texto literal), 27 it
  5. H_real: "limite inferior do IC de fedavg_iid acima do limite superior" -> desigualdade estrita (>).
  6. Janela "últimas 5 tarefas": índices T-5..T-1 com T da própria condição (30 ou 12), T = maior
     índice de tarefa da condição no CSV (todos os níveis e tarefas juntos) + 1. Só entram tarefas com gap
-    definido (agora t%3==2 e as 5 últimas, isto é, 5 referências por janela; Desvios v3 c). H_part (i)/(ii)
+    definido (t%3==2, as 5 últimas e os índices 7..11: 5 referências por janela; decisão (ii)). H_part (i)/(ii)
     usa a janela fixa 7..11 para todas as condições.
  7. Sementes cuja janela não tem nenhum gap definido são descartadas (n menor).
  8. Cada IC é um bootstrap percentil próprio (10 000 reamostragens, default_rng(0)); as reamostragens
@@ -61,9 +61,10 @@ AMBIGUIDADES do PREREGISTRO.md e como foram implementadas (texto literal), 27 it
 25. Marcação de "dados insuficientes" vs "sem vantagem" não muda com o nível.
 26. O gap da decisão de m* (regime.json) vem do pipeline (semente 1000); aqui só é reproduzido na tabela.
 27. JANELA 7..11 em H_part: o texto manda usar essa janela "para todas as condições", mas a rede nova só
-    existe em t%3==2 e nas 5 últimas tarefas da PRÓPRIA condição. Logo, nas condições de T=30 (fedavg_iid,
-    central_aprendizado) essa janela tem só 2 referências (índices 8 e 11), e só media_sem_particao (T=12) tem 5.
-    Implementado literalmente (só entram tarefas com gap definido); registrado como assimetria no relatório.
+    existia só em t%3==2 e nas 5 últimas tarefas (2 referências na janela em T=30). RESOLVIDA pela decisão (ii)
+    da Errata (2026-10-20): `tarefas_com_nova(T)` inclui também os índices 7 a 11, então a janela tem 5
+    referências pareadas em TODAS as condições (T=30: 16 tarefas; T=12: 7). Implementação inalterada
+    (só entram tarefas com gap definido); a tabela só avisa se n_ref divergir entre condições.
 """
 import glob
 import json
@@ -219,7 +220,7 @@ def acc_nova_por_semente(df, cond, tipo, nivel, janela=None):
 
 
 def n_referencias(df, cond, tipo, nivel, janela=None):
-    """Número de tarefas com gap definido na janela, por semente (deve ser 5 no esquema v3)."""
+    """Número de tarefas com gap definido na janela, por semente (5 em todas as condições, decisão (ii))."""
     d = _janela_dados(df, cond, tipo, nivel, janela)
     return d.groupby("semente").size() if len(d) else pd.Series(dtype=int)
 

@@ -78,7 +78,7 @@ def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
                 for s in sementes:
                     desloc = 0.0 if m == ref else FORA
                     lvl = np.array([_v(gap.get((cond, tipo), 0.05), x) for x in t], dtype=float) + desloc
-                    tem = (t % 3 == 2) | (t >= T - 5)          # esquema v3: 5 referências na janela
+                    tem = (t % 3 == 2) | (t >= T - 5) | ((t >= 7) & (t <= 11))   # decisão (ii): 5 referências nas duas janelas
                     acc_nova = np.where(tem, ACC_NOVA[m] + OFFSET_COND[cond], np.nan)
                     g = np.where(tem, lvl + comum[(tipo, s)] + rng.normal(0, 0.001, T), np.nan)
                     d = pd.DataFrame(dict(
@@ -171,9 +171,8 @@ def main():
         # janela com 5 referências pareadas, em todas as condições, tarefas, níveis e sementes
         for (c, tp, m), g in df.groupby(["cond", "tipo", "nivel"]):
             assert (analise.n_referencias(df, c, tp, m) == 5).all(), (c, tp, m)
-            # janela 7..11: 5 referências só em media_sem_particao (T=12); nas de T=30 só 8 e 11 (t%3==2)
-            esperado = 5 if c == "media_sem_particao" else 2
-            assert (analise.n_referencias(df, c, tp, m, analise.JANELA_PART) == esperado).all(), (c, tp, m)
+            # janela 7..11: 5 referências pareadas em TODAS as condições (decisão (ii) da Errata)
+            assert (analise.n_referencias(df, c, tp, m, analise.JANELA_PART) == 5).all(), (c, tp, m)
         # semente 1000 plantada na raiz e em calibracao/: nenhum número muda
         # eixo x de fig_dose = acc_nova da PRÓPRIA condição (acc_nova difere entre condições no gerador)
         import matplotlib.pyplot as plt
@@ -233,13 +232,21 @@ def main():
             assert trecho in md, trecho
         assert "já é um resultado" not in md          # alvo passa de 0,90 em m=10
         assert "| A | 3 |" in md and "sim" in md.split("(g) Sanidade")[1]
-        # n_ref visível: 5 na janela principal e na 7..11 de media_sem_particao; 2 na 7..11 do fedavg_iid
+        # n_ref visível: 5 na janela principal e na 7..11, em todas as condições; sem nota de assimetria
         secb = md.split("## (b)")[1].split("## (c)")[0]
         b_princ, b_jan = secb.split("## (b')")
         assert "| fedavg_iid | " in b_princ and "n_ref=5" in b_princ and "n_ref=2" not in b_princ
         lin = {l.split("|")[1].strip(): l for l in b_jan.splitlines() if l.startswith("| ")}
-        assert "n_ref=2" in lin["fedavg_iid"] and "n_ref=5" not in lin["fedavg_iid"]
-        assert "n_ref=5" in lin["media_sem_particao"] and "n_ref=2" in lin["central_aprendizado"]
+        for c_ in ("fedavg_iid", "central_aprendizado", "media_sem_particao"):
+            assert "n_ref=5" in lin[c_] and "n_ref=2" not in lin[c_], c_
+        assert "Nota: n_ref" not in md
+        # a nota de assimetria é condicional: aparece se uma condição perder referências na janela 7..11
+        import tabela_decisao
+        assert tabela_decisao._nota_assimetria_nref(df, 3) == []
+        dfa = df.copy()
+        dfa.loc[(dfa.cond == "fedavg_iid") & dfa.tarefa.isin([7, 9, 10]), ["gap", "acc_nova"]] = np.nan
+        nota = " ".join(tabela_decisao._nota_assimetria_nref(dfa, 3))
+        assert "Nota: n_ref" in nota and "fedavg_iid/A: n_ref=2" in nota, nota
         assert "n_ref=5" in md.split("## (c)")[1].split("## (d)")[0]
         # seleção de λ no formato real (dicts): tabela por λ e flag de violação
         sec_f = md.split("## (f)")[1].split("## (g)")[0]
@@ -327,7 +334,7 @@ def main():
             analise.metrica_por_semente(df, "media_sem_particao", "A", 3, analise.JANELA_PART))
         d = df[(df.cond == "fedavg_iid") & (df.tipo == "B") & (df.semente == 1) & (df.nivel == 3)
                & (df.tarefa.between(7, 11))]
-        assert abs(m_7_11[1] - d["gap"].dropna().mean()) < 1e-12 and d["gap"].notna().sum() == 2
+        assert abs(m_7_11[1] - d["gap"].dropna().mean()) < 1e-12 and d["gap"].notna().sum() == 5
         assert linha.startswith("Critérios atendidos: H_part (m=3), H_real (m=3)"), linha
 
         # ---- 5: fedavg viola o limite de esquecimento -> H_real NÃO conta

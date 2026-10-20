@@ -31,11 +31,14 @@ Teste com CSVs sintéticos em `tempfile.mkdtemp()` (não toca em `results/`; `PL
 - Decisões (H_reg, H_part, H_real, H_orc, cláusula de esquecimento, rótulos de ganho) e figuras antigas usam m*.
 - m* nulo ou regime.json ausente: decisões "não avaliável (regime sem perda; ...)"; figuras antigas no maior nível
   presente, com aviso no título; fig_dose e fig_k1_mecanismo continuam.
-- Tabela (b)/(b')/(c)/(d): `n_ref` = nº de referências pareadas por semente na janela (2 vs 5 na janela 7..11).
+- Tabela (b)/(b')/(c)/(d): `n_ref` = nº de referências pareadas por semente na janela (5 em todas as condições,
+  inclusive na janela 7..11). A tabela (b') só acrescenta uma nota se n_ref divergir entre condições.
 - Aviso na linha final se `calibracao_<A|B>_m<m*>.json` tem ok=false.
 - H_orc: no nível m*, média da métrica principal do fedavg_iid dentro do IC 95% fechado de central_aprendizado, em A e B.
 - A linha final cita o nível de cada hipótese e separa "sem vantagem a explicar" de "dados insuficientes".
 - As 27 ambiguidades e a leitura adotada estão no topo de `analise.py`.
-  Destaque: a janela 7..11 de H_part tem só 2 referências (índices 8 e 11) nas condições de T=30; só `media_sem_particao` tem 5.
+  Destaque (ambiguidade 27, resolvida pela decisão (ii) da Errata, 2026-10-20): a rede nova de referência existe em
+  t%3==2, nas 5 últimas e nos índices 7..11 (`tarefas_com_nova`: 16 tarefas em T=30, 7 em T=12); a janela 7..11 de
+  H_part tem 5 referências pareadas em todas as condições.
 
 Com 1 semente o IC é indefinido: as figuras mostram só a média e a tabela escreve "IC indefinido (n=1)".

@@ -53,6 +53,19 @@ def _tabela_ab(df, nivel, janela=None):
     return L
 
 
+def _nota_assimetria_nref(df, nivel):
+    """Nota só se n_ref na janela 7..11 diferir entre as condições da tabela (b')."""
+    refs = {}
+    for c in ("fedavg_iid", "central_aprendizado", "media_sem_particao"):
+        for t in analise.TIPOS_AB:
+            refs[(c, t)] = analise.n_ref_texto(df, c, t, nivel, analise.JANELA_PART)
+    if len(set(refs.values())) <= 1:
+        return []
+    det = "; ".join(f"{c}/{t}: {v}" for (c, t), v in refs.items())
+    return ["", f"Nota: n_ref na janela 7..11 difere entre condições ({det}). A decisão (ii) da Errata prevê 5 "
+            "referências pareadas em todas; a diferença indica dado ausente ou fora do esquema."]
+
+
 def _tabela_bd(df, nivel, regime):
     lim = analise.limite_esquecimento(df, nivel)
     L = ["Limite: média_esq(condição) ≤ média_esq(central_aprendizado) + 0,05 = "
@@ -180,6 +193,7 @@ def main():
               "média [IC 95% bootstrap] entre sementes)", ""] + _tabela_ab(df, nivel)
         L += ["", f"## (b') fedavg_iid vs central_aprendizado, janela 7..11 (índices), m={nivel}", ""] \
             + _tabela_ab(df, nivel, analise.JANELA_PART)
+        L += _nota_assimetria_nref(df, nivel)
         L += ["", f"## (c) B_disjunta no nível m={nivel}: plasticidade, esquecimento e marcação do Adendo 1", "",
               "Nas tarefas A e B o esquecimento não é medido (o mesmo X recebe rótulos conflitantes); a marcação "
               "só vale para B_disjunta.", ""] + _tabela_bd(df, nivel, regime)
