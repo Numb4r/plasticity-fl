@@ -9,7 +9,7 @@ import analise
 
 def main():
     a = _comum.args_padrao(__doc__)
-    df = analise.carregar(a.results)
+    df, regime, nivel, aviso = _comum.contexto(a)
     os.makedirs(a.saida, exist_ok=True)
     fig, axs = plt.subplots(2, 3, figsize=(17, 8), sharex="col")
     linhas = [("norma", "norma L2 dos parâmetros"),
@@ -17,7 +17,7 @@ def main():
     for i, (col, rotulo) in enumerate(linhas):
         for j, tipo in enumerate(analise.TIPOS):
             ax = axs[i, j]
-            _comum.desenhar(ax, df, col, tipo)
+            _comum.desenhar(ax, df, col, tipo, nivel)
             ax.set_title(f"Tarefa {tipo}: {col}")  # painel sem dados mostra "sem dados"
             if j == 0:
                 ax.set_ylabel(rotulo)
@@ -25,8 +25,8 @@ def main():
             if i == 1:
                 ax.set_xlabel("tarefa (índice)")
     _comum.legenda(axs.ravel())
-    fig.suptitle("Norma dos parâmetros e ‖Δθ‖ na tarefa (após SP) (média e IC 95% bootstrap entre sementes)")
-    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    fig.suptitle(_comum.titulo("Norma dos parâmetros e ‖Δθ‖ na tarefa (após SP) (média e IC 95% bootstrap entre sementes)", nivel, aviso))
+    fig.tight_layout(rect=(0, 0.09, 1, 0.94))
     fig.savefig(os.path.join(a.saida, "fig_norma.png"), dpi=200)
 
 

@@ -21,13 +21,13 @@ def _barra(m, lo, hi):
 
 def main():
     a = _comum.args_padrao(__doc__)
-    df = analise.carregar(a.results)
+    df, regime, nivel, aviso = _comum.contexto(a)
     os.makedirs(a.saida, exist_ok=True)
     fig, ax = plt.subplots(figsize=(9, 6.5))
     ys, handles = [], []
     for cond in analise.CONDICOES:
-        x = analise.resumo(df, cond, analise.TIPO_BD)
-        y = analise.resumo_esq(df, cond)
+        x = analise.resumo(df, cond, analise.TIPO_BD, nivel)
+        y = analise.resumo_esq(df, cond, nivel)
         if x["n"] == 0 or y["n"] == 0:
             continue
         est = analise.ESTILOS[cond]
@@ -42,7 +42,7 @@ def main():
         ys += [y["media"] - yl, y["media"] + yh]
         handles.append(Line2D([], [], color=est["color"], linestyle=est["linestyle"], marker=est["marker"],
                               markersize=9, markeredgecolor="black", label=cond))
-    lim = analise.limite_esquecimento(df)
+    lim = analise.limite_esquecimento(df, nivel)
     if not ys:
         ax.text(0.5, 0.5, "sem dados", transform=ax.transAxes, ha="center")
     else:
@@ -61,8 +61,9 @@ def main():
     ax.axvline(0, color="gray", linewidth=0.8)
     ax.set_xlabel("plasticidade: gap contínua − nova, últimas 5 tarefas (fração de acurácia)")
     ax.set_ylabel("esquecimento médio final (fração de acurácia)")
-    ax.set_title("B_disjunta: plasticidade × esquecimento (média e IC 95% bootstrap entre sementes)\n"
-                 "região hachurada: esquecimento acima do limite do Adendo 1")
+    ax.set_title(_comum.titulo("B_disjunta: plasticidade × esquecimento (média e IC 95% bootstrap entre sementes)",
+                               nivel, aviso) + "\nregião hachurada: esquecimento acima do limite do Adendo 1",
+                 fontsize=10)
     ax.grid(alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(a.saida, "fig_tradeoff.png"), dpi=200)

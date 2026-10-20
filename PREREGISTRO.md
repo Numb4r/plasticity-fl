@@ -132,3 +132,6 @@ g) **Nomes de arquivo**: `results/<condicao>_m<m>_<tarefa>_<semente>.csv` (e `_m
 
 ### Previsão do autor
 (a preencher pelo autor, antes de qualquer execução do Passo 5)
+
+### 2026-10-20 · Errata dos Desvios v3, item (c), antes de qualquer execução
+O item (c) diz que "a janela principal e a de H_part têm agora 5 referências". Isso é verdade para a janela principal de qualquer condição e para a janela de H_part (índices 7 a 11) apenas em `media_sem_particao` (T=12). Nas condições com T=30, a janela 7 a 11 só tem rede nova nos índices 8 e 11 (t mod 3 = 2), isto é, 2 referências. O código atual implementa o texto literal (2 referências nessas condições). **Decisão pendente do autor** antes do Passo 5: (i) manter 2 referências, ou (ii) acrescentar rede nova também nos índices 7 a 11 das condições de T=30 (custo: +3 redes novas por execução). Qualquer escolha será registrada aqui antes de rodar.

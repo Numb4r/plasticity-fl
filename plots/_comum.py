@@ -18,11 +18,25 @@ def args_padrao(desc):
     return p.parse_args()
 
 
-def desenhar(ax, df, coluna, tipo):
+def contexto(a):
+    """Carrega CSVs e regime; devolve (df, regime, nivel de exibição, aviso)."""
+    df = analise.carregar(a.results)
+    regime = analise.carregar_regime(a.results)
+    nivel, aviso = analise.nivel_exibicao(df, regime)
+    return df, regime, nivel, aviso
+
+
+def titulo(base, nivel, aviso):
+    """Título com o nível usado e, se houver, o aviso (m* nulo ou ausente)."""
+    t = f"{base} (nível m={nivel})"
+    return t + ("\n" + aviso if aviso else "")
+
+
+def desenhar(ax, df, coluna, tipo, nivel):
     """Uma linha por condição: média por tarefa + faixa de IC 95% (se n>=2). Devolve True se desenhou algo."""
     desenhou = False
     for cond in analise.CONDICOES:
-        c = analise.curva(df, cond, tipo, coluna)
+        c = analise.curva(df, cond, tipo, coluna, nivel)
         if c.empty:
             continue
         est = analise.ESTILOS[cond]

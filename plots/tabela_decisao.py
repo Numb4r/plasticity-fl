@@ -1,5 +1,6 @@
-"""figures/tabela_decisao.md: métrica principal (A e B), tabela de B_disjunta (plasticidade, esquecimento,
-marcação), janela 7..11 e critérios."""
+"""figures/tabela_decisao.md (esquema v3): cabeçalho com o nível m*, métrica principal em A e B no nível m*,
+B_disjunta (gap + esquecimento + marcação), dose-resposta, calibração, seleção de λ, sanidade K=1 e
+a linha final de critérios (H_reg, H_part, H_real, H_orc)."""
 import os
 
 import numpy as np
@@ -9,7 +10,7 @@ import analise
 
 
 def fmt(r):
-    """Formata média ± IC e n; sem IC (n<2) escreve a nota pedida."""
+    """Formata média [IC 95%] (n); sem IC (n<2) escreve a nota."""
     if r["n"] == 0:
         return "sem dados"
     if np.isnan(r["inf"]):
@@ -17,37 +18,141 @@ def fmt(r):
     return f"{r['media']:.4f} [{r['inf']:.4f}, {r['sup']:.4f}] (n={r['n']})"
 
 
+def _cabecalho(regime, nivel, aviso):
+    L = ["# Tabela de decisão", "", "## (a) Nível de avaliação"]
+    if not regime["presente"]:
+        L.append("- `results/calibracao/regime.json` ausente: nenhuma decisão é avaliável.")
+    else:
+        gaps = ", ".join(f"m={m}: {g:.3f}" for m, g in sorted(regime["gaps"].items())) or "sem gaps no JSON"
+        if regime["m_star"] is None:
+            L.append(f"- m* = null (regime.json). {regime['nota'] or analise.MSG_SEM_REGIME}")
+        else:
+            L.append(f"- m* = {regime['m_star']} (de `results/calibracao/regime.json`: menor nível com gap "
+                     "de central_aprendizado ≤ −0,10 na tarefa A, semente 1000).")
+        L.append(f"- Gap de central_aprendizado, tarefa A, semente 1000, por nível: {gaps}.")
+    if aviso:
+        L.append(f"- {aviso}. Os números abaixo são descritivos; as decisões saem não avaliáveis.")
+    elif nivel is not None:
+        L.append(f"- Todas as tabelas (b), (c), (g) e as decisões usam o nível m={nivel}.")
+    return L
+
+
+def _tabela_ab(df, nivel, janela=None):
+    L = ["| condição | tarefa A | tarefa B |", "|---|---|---|"]
+    conds = analise.CONDICOES if janela is None else ("fedavg_iid", "central_aprendizado", "media_sem_particao")
+    for c in conds:
+        L.append(f"| {c} | " + " | ".join(fmt(analise.resumo(df, c, t, nivel, janela))
+                                         for t in analise.TIPOS_AB) + " |")
+    return L
+
+
+def _tabela_bd(df, nivel, regime):
+    lim = analise.limite_esquecimento(df, nivel)
+    L = ["Limite: média_esq(condição) ≤ média_esq(central_aprendizado) + 0,05 = "
+         + ("indefinido (sem esquecimento de central_aprendizado)" if np.isnan(lim) else f"{lim:.4f}"), "",
+         "| condição | gap contínua−nova, últimas 5 tarefas (média [IC 95%], n) "
+         "| esquecimento médio final (média [IC 95%], n) | marcação |", "|---|---|---|---|"]
+    for c in analise.CONDICOES:
+        marca = analise.rotulo_ganho(df, c, regime)
+        if c == "central_aprendizado" and analise.nivel_decisao(regime) is not None:
+            marca += " (referência do limite)"
+        L.append(f"| {c} | {fmt(analise.resumo(df, c, analise.TIPO_BD, nivel))} "
+                 f"| {fmt(analise.resumo_esq(df, c, nivel))} | {marca} |")
+    return L
+
+
+def _tabela_dose(df):
+    L = []
+    for t in analise.TIPOS:
+        L += [f"**Tarefa {t}**", "", "| condição | " + " | ".join(f"m={m}" for m in analise.NIVEIS) + " |",
+              "|---|" + "---|" * len(analise.NIVEIS)]
+        for c in analise.CONDICOES:
+            cel = [fmt(analise.resumo(df, c, t, m)) for m in analise.NIVEIS]
+            if all(x == "sem dados" for x in cel):
+                continue
+            L.append(f"| {c} | " + " | ".join(cel) + " |")
+        L.append("")
+    return L
+
+
+def _tabela_calib(calib):
+    L = ["| tarefa | nível | alvo (acc nova do fedavg_iid) | passos | acc_central | erro | ok | alvo > 0,90 |",
+         "|---|---|---|---|---|---|---|---|"]
+
+    def f(v, casas=3):
+        return "n/d" if v is None else (f"{v:.{casas}f}" if isinstance(v, float) else str(v))
+    for (t, m), j in sorted(calib.items(), key=lambda kv: (analise.TIPOS.index(kv[0][0])
+                                                           if kv[0][0] in analise.TIPOS else 9, kv[0][1])):
+        L.append(f"| {t} | {m} | {f(j.get('alvo_acc_nova_fedavg'))} | {f(j.get('passos'))} "
+                 f"| {f(j.get('acc_central'))} | {f(j.get('erro'))} | {f(j.get('ok'))} "
+                 f"| {f(j.get('alvo_acima_de_0.90'))} |")
+    if not calib:
+        L.append("| sem calibracao_*.json | | | | | | | |")
+    j10 = calib.get(("A", 10))
+    if j10 is None:
+        L += ["", "Registro: calibracao_A_m10.json ausente; não dá para dizer se o alvo passa de 0,90 em m=10."]
+    elif j10.get("alvo_acima_de_0.90") is False:
+        L += ["", "**Registro: a rede nova do fedavg_iid não passa de 0,90 nem em m=10: já é um resultado.**"]
+    elif j10.get("alvo_acima_de_0.90") is None:
+        L += ["", "Registro: calibracao_A_m10.json sem o campo `alvo_acima_de_0.90` (n/d)."]
+    else:
+        L += ["", "Registro: alvo da rede nova do fedavg_iid passa de 0,90 em m=10 na tarefa A."]
+    return L
+
+
+def _tabela_selecao(sel):
+    L = ["| método | tarefa | nível | λ | esquecimento | esquecimento_ref | violação |", "|---|---|---|---|---|---|---|"]
+    for (met, t, m), j in sorted(sel.items()):
+        def f(k):
+            v = j.get(k)
+            return "n/d" if v is None else (f"{v:.4f}" if isinstance(v, float) else str(v))
+        L.append(f"| {met} | {t} | {m} | {f('lambda')} | {f('esquecimento')} | {f('esquecimento_ref')} "
+                 f"| {f('violacao')} |")
+    if not sel:
+        L.append("| sem selecao_*.json | | | | | | |")
+    return L
+
+
+def _tabela_sanidade(df):
+    L = ["Pelo Desvios v3 (a), `sem_media_k1` e `central_passos` executam o mesmo algoritmo e deveriam "
+         "coincidir dentro do ruído. Coincidem = ICs da métrica principal se sobrepõem.", "",
+         "| tarefa | nível | sem_media_k1 | central_passos | ICs sobrepostos? |", "|---|---|---|---|---|"]
+    for t in analise.TIPOS:
+        for m in analise.NIVEIS:
+            a, b = analise.resumo(df, "sem_media_k1", t, m), analise.resumo(df, "central_passos", t, m)
+            if a["n"] == 0 or b["n"] == 0:
+                ver = "n/d (sem dados)"
+            elif analise._sem_ic(a) or analise._sem_ic(b):
+                ver = "n/d (IC indefinido)"
+            else:
+                ver = "sim" if analise._sobrepoe(a, b) else "NÃO (reportar: deveriam coincidir)"
+            L.append(f"| {t} | {m} | {fmt(a)} | {fmt(b)} | {ver} |")
+    return L
+
+
 def main():
     a = _comum.args_padrao(__doc__)
-    df = analise.carregar(a.results)
+    df, regime, nivel, aviso = _comum.contexto(a)
+    calib, sel = analise.carregar_calibracao(a.results)
     os.makedirs(a.saida, exist_ok=True)
-    L = ["# Tabela de decisão", "",
-         "## Métrica principal (gap médio nas últimas 5 tarefas da condição; média e IC 95% bootstrap entre sementes)",
-         "", "| condição | tarefa A | tarefa B |", "|---|---|---|"]
-    for c in analise.CONDICOES:
-        L.append(f"| {c} | " + " | ".join(fmt(analise.resumo(df, c, t)) for t in analise.TIPOS_AB) + " |")
-    L += ["", "## fedavg_iid vs central_aprendizado, janela 7..11 (índices)", "",
-          "| condição | tarefa A | tarefa B |", "|---|---|---|"]
-    for c in ("fedavg_iid", "central_aprendizado", "media_sem_particao"):
-        L.append(f"| {c} | " + " | ".join(
-            fmt(analise.resumo(df, c, t, analise.JANELA_PART)) for t in analise.TIPOS_AB) + " |")
-    lim = analise.limite_esquecimento(df)
-    L += ["", "## B_disjunta: plasticidade, esquecimento e marcação do Adendo 1", "",
-          "Nas tarefas A e B o esquecimento não é medido: o mesmo X recebe rótulos conflitantes a cada "
-          "tarefa, por isso a marcação abaixo só vale para B_disjunta.",
-          "",
-          "Limite: média_esq(condição) ≤ média_esq(central_aprendizado) + 0,05 = "
-          + ("indefinido (sem esquecimento de central_aprendizado)" if np.isnan(lim) else f"{lim:.4f}"),
-          "", "| condição | plasticidade: gap contínua−nova, últimas 5 tarefas (média [IC 95%], n) "
-          "| esquecimento médio final (média [IC 95%], n) | marcação |", "|---|---|---|---|"]
-    for c in analise.CONDICOES:
-        marca = analise.rotulo_ganho(df, c)
-        if c == "central_aprendizado":
-            marca += " (referência do limite)"
-        L.append(f"| {c} | {fmt(analise.resumo(df, c, analise.TIPO_BD))} "
-                 f"| {fmt(analise.resumo_esq(df, c))} | {marca} |")
-    linha, expl = analise.criterios_atendidos(df)
-    L += ["", "## Regras", ""] + [f"- {e}" for e in expl] + ["", linha, ""]
+    L = _cabecalho(regime, nivel, aviso)
+    if nivel is not None and not df.empty:
+        L += ["", f"## (b) Métrica principal no nível m={nivel} (gap médio nas últimas 5 tarefas; "
+              "média [IC 95% bootstrap] entre sementes)", ""] + _tabela_ab(df, nivel)
+        L += ["", f"## (b') fedavg_iid vs central_aprendizado, janela 7..11 (índices), m={nivel}", ""] \
+            + _tabela_ab(df, nivel, analise.JANELA_PART)
+        L += ["", f"## (c) B_disjunta no nível m={nivel}: plasticidade, esquecimento e marcação do Adendo 1", "",
+              "Nas tarefas A e B o esquecimento não é medido (o mesmo X recebe rótulos conflitantes); a marcação "
+              "só vale para B_disjunta.", ""] + _tabela_bd(df, nivel, regime)
+    L += ["", "## (d) Dose-resposta: métrica principal por condição × nível × tarefa "
+          "(central_L2 e central_SP só existem em m*)", ""] + _tabela_dose(df)
+    L += ["## (e) Calibração de central_aprendizado (semente 1000)", ""] + _tabela_calib(calib)
+    L += ["", "## (f) Seleção de λ (semente 1000, nível m*)", ""] + _tabela_selecao(sel)
+    L += ["", "## (g) Sanidade: sem_media_k1 vs central_passos", ""] + _tabela_sanidade(df)
+    linha, expl = analise.criterios_atendidos(df, regime)
+    m = analise.nivel_decisao(regime)
+    L += ["", "## Regras" + (f" (nível m*={m})" if m is not None else ""), ""] + [f"- {e}" for e in expl]
+    L += ["", "## (h) Linha final", "", linha, ""]
     with open(os.path.join(a.saida, "tabela_decisao.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
 
