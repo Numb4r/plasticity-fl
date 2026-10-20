@@ -135,3 +135,13 @@ g) **Nomes de arquivo**: `results/<condicao>_m<m>_<tarefa>_<semente>.csv` (e `_m
 
 ### 2026-10-20 · Errata dos Desvios v3, item (c), antes de qualquer execução
 O item (c) diz que "a janela principal e a de H_part têm agora 5 referências". Isso é verdade para a janela principal de qualquer condição e para a janela de H_part (índices 7 a 11) apenas em `media_sem_particao` (T=12). Nas condições com T=30, a janela 7 a 11 só tem rede nova nos índices 8 e 11 (t mod 3 = 2), isto é, 2 referências. O código atual implementa o texto literal (2 referências nessas condições). **Decisão pendente do autor** antes do Passo 5: (i) manter 2 referências, ou (ii) acrescentar rede nova também nos índices 7 a 11 das condições de T=30 (custo: +3 redes novas por execução). Qualquer escolha será registrada aqui antes de rodar.
+
+### 2026-10-20 · Leituras do código de análise registradas após a auditoria nº 5 (antes de qualquer execução)
+1. **Sem regime (m\* nulo)**: as decisões saem "não avaliável". As figuras antigas, incluindo `fig_tradeoff.png`, são geradas no maior nível apenas como descrição, com aviso no título; o texto dos Desvios v3 ("reportar só a figura de dose-resposta") vale para qualquer interpretação.
+2. **H_orc**: basta a média de `fedavg_iid` (n ≥ 1) cair no IC fechado de `central_aprendizado` (n ≥ 2); janela principal; sem pré-condição.
+3. **`fig_dose.png`**: o eixo x é a acurácia média da rede nova da PRÓPRIA condição, nas mesmas tarefas e sementes da métrica principal. Para `media_sem_particao` a janela principal é 7 a 11 (T=12); para as outras, 25 a 29. A linha em −0,10 é o limiar do regime, definido só na tarefa A, e aparece nos três painéis como referência visual.
+4. **`fig_k1_mecanismo.png`**: nível m=10, `sem_media_k1` contra `fedavg_iid`, dormentes (τ=0 e τ=0,025) da última camada oculta, norma e rank efetivo.
+5. **Sanidade `sem_media_k1` × `central_passos`**: "coincidem" = ICs da métrica principal sobrepostos; com IC indefinido, "n/d".
+6. **H_reg** sai "não avaliável" se existe um só candidato (L2 ou SP) e ele falha, porque o outro poderia atender.
+7. **Exclusões lógicas a considerar na leitura**: em B, a pré-condição de H_part (inf de `fedavg_iid` > sup de `central_aprendizado`) torna H_orc impossível, e H_orc atendida implica H_part "sem vantagem a explicar". H_reg e H_real também se excluem.
+8. **Análise só com sementes confirmatórias (1 a 5)**: `carregar` descarta e avisa qualquer outra semente na raiz de `results/`.
