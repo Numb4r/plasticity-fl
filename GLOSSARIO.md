@@ -1,6 +1,6 @@
 # Glossário
 
-Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que aparecem no código, nos CSVs, nas figuras e no `PREREGISTRO.md`. Os termos do Adendo v3.1 (métricas de Klein et al.) entram aqui quando forem implementados.
+Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que aparecem no código, nos CSVs, nas figuras e no `PREREGISTRO.md`.
 
 ## A ideia central
 
@@ -29,7 +29,7 @@ Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que a
 - **m\* (regime de teste)** — o menor nível em que o `central_aprendizado` já perde plasticidade na tarefa A. É onde as hipóteses são avaliadas.
 - **λ (lambda)** — a força de uma regularização: de L2 (peso do encolhimento) ou de shrink-and-perturb (quanto a rede é encolhida).
 - **τ (tau)** — o limiar abaixo do qual um neurônio é considerado dormente (0 ou 0,025).
-- **δ** — a tolerância usada na definição de rank do survey (0,01), previsto no Adendo v3.1.
+- **δ** — a tolerância usada na definição de srank (0,01): quanto da soma dos valores singulares pode ficar de fora.
 
 ## Condições (as 7 formas de treinar)
 
@@ -96,6 +96,35 @@ Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que a
 - **Matriz de acurácias** — tabela com a acurácia em cada tarefa j depois de treinar até a tarefa i (arquivo `_matriz.csv`).
 - **Limite de esquecimento** — uma condição só conta como ganho de plasticidade se esquecer, no máximo, 5 pontos percentuais a mais que o `central_aprendizado`.
 
+## Diagnósticos de Klein et al. (Adendo v3.1; só descrevem, não decidem nada)
+
+- **Diagnóstico** — medida extra para entender *por que* uma rede perde plasticidade; não entra em nenhuma hipótese nem na `tabela_decisao.md`.
+- **Klein et al. (2026)** — o survey de perda de plasticidade em aprendizado por reforço profundo que propõe esse conjunto padrão de medidas.
+- **Cadeia causal** — a hipótese do survey de que a norma dos pesos e a curvatura sobem antes de a acurácia cair; a pergunta exploratória do projeto é se isso acontece aqui.
+- **Início e fim da tarefa (`ini_`, `fim_`)** — os dois momentos de medição: logo antes do primeiro passo (depois do shrink-and-perturb, com os rótulos novos) e logo depois do treino.
+- **`nova_ini_`, `nova_fim_`** — as mesmas medidas na rede nova de referência, como linha de base; vazias nas tarefas sem rede nova.
+- **Cópia da rede** — todos os diagnósticos são calculados numa cópia, para nunca mexer na rede de verdade.
+- **`norma_l1_w`, `norma_l1_b`, ... `norma_l3_b`** — tamanho dos pesos (w) e dos vieses (b) de cada uma das três camadas lineares; `norma_global` é o tamanho de tudo junto.
+- **Gradiente** — a direção e a intensidade com que a rede "quer" mudar para errar menos na tarefa.
+- **`grad_l2_l1_w`, ... (norma L2 do gradiente)** — intensidade do gradiente em cada camada; a L2 é sensível a valores extremos.
+- **`grad_l1_l1_w`, ... (norma L1 do gradiente)** — a mesma intensidade somando valores absolutos; é mais robusta a valores extremos.
+- **`grad_l2_global`, `grad_l1_global`** — o mesmo para todas as camadas juntas.
+- **Espectro do gradiente** — olhar os gradientes de 64 pontos fixos da tarefa, um por ponto, para ver se apontam para direções variadas ou todos para a mesma.
+- **Pontos fixos do espectro** — os 64 pontos são sorteados uma vez por semente e tarefa e são os mesmos em todas as condições, momentos e redes.
+- **`grad_srank`** — quantas direções independentes os gradientes dos 64 pontos realmente usam; valor baixo indica gradientes redundantes.
+- **srank** — o menor número de direções que juntas explicam quase tudo (99%) de uma matriz.
+- **`srank_feat`** — o mesmo srank, mas das ativações da última camada oculta (as "features"); fica ao lado do `rank_ef`, que usa outra definição.
+- **`grad_cos_medio`** — o quanto, em média, os gradientes de pontos diferentes apontam para o mesmo lado.
+- **`grad_cos_neg`** — a fração de pares de pontos cujos gradientes puxam em sentidos opostos.
+- **Hessiana** — a "curvatura" da perda: diz o quão rápido o erro muda quando se mexe nos pesos.
+- **`hess_max`** — o maior valor de curvatura; se for muito alto, passos pequenos já desestabilizam o treino.
+- **`hess_conv`** — 1 se a estimativa de `hess_max` estabilizou (variação menor que 1% nas últimas 5 iterações), 0 se não.
+- **Power iteration** — método iterativo que acha o maior valor de curvatura sem montar a matriz inteira (30 iterações).
+- **Produto Hessiana-vetor** — a conta que a power iteration repete a cada passo, feita com diferenciação automática dupla.
+- **`torch.func.vmap`** — ferramenta que calcula os gradientes dos 64 pontos de uma vez, em vez de um por um.
+- **Cortes de custo (a, b, c)** — formas de baratear os diagnósticos, usadas só se o completo crescesse mais de 25%; nenhum foi necessário.
+- **`medir_custo.py` e `custo_diagnosticos.json`** — o script e o arquivo com o custo medido dos diagnósticos e a projeção do acréscimo no tempo do completo.
+
 ## Hipóteses e decisão
 
 - **H_reg** — a vantagem do FedAvg é só regularização conhecida: L2 ou SP no centralizado chegam ao mesmo resultado.
@@ -141,7 +170,7 @@ Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que a
 - **`fig_sonda.png`** — a razão da sonda de alvos aleatórios ao longo das tarefas.
 - **`fig_tradeoff.png`** — plasticidade contra esquecimento, um ponto por condição, só na B_disjunta.
 - **`fig_dose.png`** — a figura principal: o `gap` em função do quanto a rede nova aprende, em cada nível m.
-- **`fig_k1_mecanismo.png`** — compara `sem_media_k1` e `fedavg_iid` em m=10 para ver se o colapso vem de neurônios mortos, perda de rank ou explosão de norma.
+- **`fig_k1_mecanismo.png`** — compara as condições em m=10 (e em m\*) para ver se o colapso vem de neurônios mortos, perda de rank, explosão de norma ou aumento de curvatura; usa os diagnósticos do Adendo v3.1.
 - **`tabela_decisao.md`** — a tabela final com as métricas por condição, o resultado de cada hipótese e as ressalvas.
 
 ## Agentes
