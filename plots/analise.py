@@ -39,8 +39,9 @@ AMBIGUIDADES do PREREGISTRO.md e como foram implementadas (texto literal), 27 it
     "H_real: ganho de plasticidade com esquecimento acima do limite".
 18. `carregar` lê só results/*.csv (um nível, sem subpastas): ignora *_rodadas.csv, *_matriz.csv,
     *.params.json e results/calibracao/; pula (com aviso) CSV sem tarefa/tipo/cond/semente/nivel;
-    cond, tipo, semente e nivel vêm das colunas, nunca do nome do arquivo; DESCARTA toda linha com
-    semente 1000 (calibração), mesmo que apareça na raiz.
+    cond, tipo, semente e nivel vêm das colunas, nunca do nome do arquivo; MANTÉM só semente em
+    SEMENTES_AVALIACAO (1 a 5) e avisa (warnings.warn) quais sementes foram descartadas (0, 6, 1000 etc.),
+    mesmo que apareçam na raiz.
 19. Nível de decisão = m_star de regime.json. m_star null: todas as decisões (H_reg, H_part, H_real,
     H_orc e rótulos de ganho) saem "não avaliável (regime sem perda; H_real, H_reg, H_part e H_orc não
     testáveis neste toy)"; as figuras antigas usam o MAIOR nível presente nos CSVs, com aviso no título.
@@ -58,17 +59,18 @@ AMBIGUIDADES do PREREGISTRO.md e como foram implementadas (texto literal), 27 it
 24. Rede nova do fedavg_iid não passa de 0,90: a linha de registro só aparece quando
     `alvo_acima_de_0.90` for falso em calibracao_A_m10.json (literal); ausente do JSON -> "n/d".
 25. Marcação de "dados insuficientes" vs "sem vantagem" não muda com o nível.
+26. O gap da decisão de m* (regime.json) vem do pipeline (semente 1000); aqui só é reproduzido na tabela.
 27. JANELA 7..11 em H_part: o texto manda usar essa janela "para todas as condições", mas a rede nova só
     existe em t%3==2 e nas 5 últimas tarefas da PRÓPRIA condição. Logo, nas condições de T=30 (fedavg_iid,
     central_aprendizado) essa janela tem só 2 referências (índices 8 e 11), e só media_sem_particao (T=12) tem 5.
     Implementado literalmente (só entram tarefas com gap definido); registrado como assimetria no relatório.
-26. O gap da decisão de m* (regime.json) vem do pipeline (semente 1000); aqui só é reproduzido na tabela.
 """
 import glob
 import json
 import os
 import re
 import sys
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -83,7 +85,9 @@ CONDICOES_DOSE = ["fedavg_iid", "sem_media_k1", "media_sem_particao",
                   "central_passos", "central_aprendizado"]   # as que existem em todos os níveis
 JANELA_PART = (7, 11)  # janela fixa de H_part (índices, inclusiva)
 LIMITE_ESQ = 0.05      # Adendo 1: 5 pontos percentuais (fração de acurácia)
-SEMENTE_CALIB = 1000   # só calibração: nunca entra na análise
+# Réplica de src.config.SEMENTES_AVALIACAO (plots/ não importa src/). Só estas sementes entram na análise;
+# a 1000 é calibração e a 0 é exploratória do desenho antigo.
+SEMENTES_AVALIACAO = (1, 2, 3, 4, 5)
 SUFIXOS_IGNORADOS = ("_rodadas.csv", "_matriz.csv")
 COLUNAS_CHAVE = {"tarefa", "tipo", "cond", "semente", "nivel"}
 MSG_SEM_REGIME = ("regime sem perda; H_real, H_reg, H_part e H_orc não testáveis neste toy")
@@ -103,7 +107,8 @@ ESTILOS = {
 # ---------------------------------------------------------------- carga
 
 def carregar(results="results"):
-    """Lê só os CSVs principais de results/ (um nível, sem subpastas) e descarta a semente 1000."""
+    """Lê só os CSVs principais de results/ (um nível, sem subpastas); mantém só semente em
+    SEMENTES_AVALIACAO e emite aviso listando as descartadas."""
     arqs = sorted(glob.glob(os.path.join(results, "*.csv")))
     arqs = [a for a in arqs if not a.endswith(SUFIXOS_IGNORADOS)]
     dfs = []
@@ -116,7 +121,11 @@ def carregar(results="results"):
     if not dfs:
         return pd.DataFrame()
     df = pd.concat(dfs, ignore_index=True)
-    df = df[df["semente"] != SEMENTE_CALIB].reset_index(drop=True)   # segurança: calibração fora
+    fora = sorted(set(df["semente"].unique()) - set(SEMENTES_AVALIACAO))
+    if fora:
+        warnings.warn("sementes descartadas (fora de SEMENTES_AVALIACAO=1..5): "
+                      + ", ".join(str(x) for x in fora), stacklevel=2)
+    df = df[df["semente"].isin(SEMENTES_AVALIACAO)].reset_index(drop=True)
     df["nivel"] = df["nivel"].astype(int)
     return df
 
@@ -215,6 +224,15 @@ def n_referencias(df, cond, tipo, nivel, janela=None):
     return d.groupby("semente").size() if len(d) else pd.Series(dtype=int)
 
 
+def n_ref_texto(df, cond, tipo, nivel, janela=None):
+    """'n_ref=5' (ou 'n_ref=2-5' se variar entre sementes): referências pareadas por semente na janela."""
+    n = n_referencias(df, cond, tipo, nivel, janela)
+    if n.empty:
+        return "n_ref=0"
+    lo, hi = int(n.min()), int(n.max())
+    return f"n_ref={lo}" if lo == hi else f"n_ref={lo}-{hi}"
+
+
 def bootstrap_ic(valores, n=10000, semente=0):
     """(média, inf, sup): IC 95% percentil reamostrando as sementes. n<2 -> IC = (nan, nan)."""
     v = np.asarray(valores, dtype=float)
@@ -247,6 +265,8 @@ def resumo_acc_nova(df, cond, tipo, nivel, janela=None):
 
 def curva(df, cond, tipo, coluna, nivel):
     """Por tarefa: média e IC 95% bootstrap entre sementes (só pontos com valor definido)."""
+    if df.empty or coluna not in df.columns:
+        return pd.DataFrame(columns=["tarefa", "media", "inf", "sup", "n"])
     d = df[(df["cond"] == cond) & (df["tipo"] == tipo) & (df["nivel"] == nivel)].dropna(subset=[coluna])
     linhas = []
     for t, g in d.groupby("tarefa"):

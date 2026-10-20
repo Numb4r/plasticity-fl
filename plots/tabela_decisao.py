@@ -9,13 +9,20 @@ import _comum
 import analise
 
 
-def fmt(r):
-    """Formata média [IC 95%] (n); sem IC (n<2) escreve a nota."""
+def fmt(r, nref=None):
+    """Formata média [IC 95%] (n); sem IC (n<2) escreve a nota. nref (ex.: 'n_ref=5') vai ao lado."""
     if r["n"] == 0:
         return "sem dados"
+    extra = f", {nref}" if nref else ""
     if np.isnan(r["inf"]):
-        return f"{r['media']:.4f} (IC indefinido (n={r['n']}))"
-    return f"{r['media']:.4f} [{r['inf']:.4f}, {r['sup']:.4f}] (n={r['n']})"
+        return f"{r['media']:.4f} (IC indefinido (n={r['n']}){extra})"
+    return f"{r['media']:.4f} [{r['inf']:.4f}, {r['sup']:.4f}] (n={r['n']}{extra})"
+
+
+def fmt_m(df, cond, tipo, nivel, janela=None):
+    """Métrica principal com n_ref (referências pareadas por semente na janela)."""
+    return fmt(analise.resumo(df, cond, tipo, nivel, janela),
+               analise.n_ref_texto(df, cond, tipo, nivel, janela))
 
 
 def _cabecalho(regime, nivel, aviso):
@@ -33,7 +40,7 @@ def _cabecalho(regime, nivel, aviso):
     if aviso:
         L.append(f"- {aviso}. Os números abaixo são descritivos; as decisões saem não avaliáveis.")
     elif nivel is not None:
-        L.append(f"- Todas as tabelas (b), (c), (g) e as decisões usam o nível m={nivel}.")
+        L.append(f"- As tabelas (b), (b'), (c) e as decisões usam o nível m={nivel}; (d) e (g) percorrem todos os níveis.")
     return L
 
 
@@ -41,7 +48,7 @@ def _tabela_ab(df, nivel, janela=None):
     L = ["| condição | tarefa A | tarefa B |", "|---|---|---|"]
     conds = analise.CONDICOES if janela is None else ("fedavg_iid", "central_aprendizado", "media_sem_particao")
     for c in conds:
-        L.append(f"| {c} | " + " | ".join(fmt(analise.resumo(df, c, t, nivel, janela))
+        L.append(f"| {c} | " + " | ".join(fmt_m(df, c, t, nivel, janela)
                                          for t in analise.TIPOS_AB) + " |")
     return L
 
@@ -56,7 +63,7 @@ def _tabela_bd(df, nivel, regime):
         marca = analise.rotulo_ganho(df, c, regime)
         if c == "central_aprendizado" and analise.nivel_decisao(regime) is not None:
             marca += " (referência do limite)"
-        L.append(f"| {c} | {fmt(analise.resumo(df, c, analise.TIPO_BD, nivel))} "
+        L.append(f"| {c} | {fmt_m(df, c, analise.TIPO_BD, nivel)} "
                  f"| {fmt(analise.resumo_esq(df, c, nivel))} | {marca} |")
     return L
 
@@ -67,7 +74,7 @@ def _tabela_dose(df):
         L += [f"**Tarefa {t}**", "", "| condição | " + " | ".join(f"m={m}" for m in analise.NIVEIS) + " |",
               "|---|" + "---|" * len(analise.NIVEIS)]
         for c in analise.CONDICOES:
-            cel = [fmt(analise.resumo(df, c, t, m)) for m in analise.NIVEIS]
+            cel = [fmt_m(df, c, t, m) for m in analise.NIVEIS]
             if all(x == "sem dados" for x in cel):
                 continue
             L.append(f"| {c} | " + " | ".join(cel) + " |")
@@ -100,17 +107,47 @@ def _tabela_calib(calib):
     return L
 
 
+def _num(v, casas=4):
+    if isinstance(v, bool):
+        return str(v)
+    return "n/d" if v is None else (f"{v:.{casas}f}" if isinstance(v, (int, float)) else str(v))
+
+
+def _por_lambda(d):
+    """{λ (str ou float): valor} -> lista [(λ float, valor)] ordenada por λ; não-dict -> []."""
+    if not isinstance(d, dict):
+        return []
+    return sorted(((float(k), v) for k, v in d.items()), key=lambda kv: kv[0])
+
+
 def _tabela_selecao(sel):
-    L = ["| método | tarefa | nível | λ | esquecimento | esquecimento_ref | violação |", "|---|---|---|---|---|---|---|"]
-    for (met, t, m), j in sorted(sel.items()):
-        def f(k):
-            v = j.get(k)
-            return "n/d" if v is None else (f"{v:.4f}" if isinstance(v, float) else str(v))
-        L.append(f"| {met} | {t} | {m} | {f('lambda')} | {f('esquecimento')} | {f('esquecimento_ref')} "
-                 f"| {f('violacao')} |")
+    """Uma subseção por selecao_<método>_<tarefa>_m<m>.json: tabela por λ (acc, esquecimento, respeita o
+    limite esq_ref + 0,05?) e a flag `violacao`. Formato real: notas e esquecimento são dicts {λ: valor},
+    esquecimento_ref é float (ou null fora de B_disjunta; esquecimento então é {})."""
     if not sel:
-        L.append("| sem selecao_*.json | | | | | | |")
-    return L
+        return ["sem selecao_*.json"]
+    L = []
+    for (met, t, m), j in sorted(sel.items()):
+        ref = j.get("esquecimento_ref")
+        esq = dict(_por_lambda(j.get("esquecimento")))
+        notas = _por_lambda(j.get("notas"))
+        lam = j.get("lambda")
+        L += [f"**{met}, tarefa {t}, m={m}**: λ escolhido = {_num(lam, 6)}; "
+              f"esquecimento_ref = {_num(ref)}; violação = {_num(j.get('violacao'))}", "",
+              "| λ | acc contínua (últimas 5 tarefas) | esquecimento final | respeita limite (≤ ref + 0,05)? |",
+              "|---|---|---|---|"]
+        for l, acc in notas:
+            e = esq.get(l)
+            if e is None or ref is None:
+                resp = "n/d (limite só medido em B_disjunta)"
+            else:
+                resp = "sim" if e <= ref + analise.LIMITE_ESQ else "NÃO"
+            marca = " (escolhido)" if lam is not None and abs(l - float(lam)) < 1e-12 else ""
+            L.append(f"| {l:g}{marca} | {_num(acc)} | {_num(e)} | {resp} |")
+        if not notas:
+            L.append("| sem notas no JSON | | | |")
+        L.append("")
+    return L[:-1]
 
 
 def _tabela_sanidade(df):
@@ -120,13 +157,15 @@ def _tabela_sanidade(df):
     for t in analise.TIPOS:
         for m in analise.NIVEIS:
             a, b = analise.resumo(df, "sem_media_k1", t, m), analise.resumo(df, "central_passos", t, m)
+            na = analise.n_ref_texto(df, "sem_media_k1", t, m)
+            nb = analise.n_ref_texto(df, "central_passos", t, m)
             if a["n"] == 0 or b["n"] == 0:
                 ver = "n/d (sem dados)"
             elif analise._sem_ic(a) or analise._sem_ic(b):
                 ver = "n/d (IC indefinido)"
             else:
                 ver = "sim" if analise._sobrepoe(a, b) else "NÃO (reportar: deveriam coincidir)"
-            L.append(f"| {t} | {m} | {fmt(a)} | {fmt(b)} | {ver} |")
+            L.append(f"| {t} | {m} | {fmt(a, na)} | {fmt(b, nb)} | {ver} |")
     return L
 
 
@@ -152,6 +191,11 @@ def main():
     linha, expl = analise.criterios_atendidos(df, regime)
     m = analise.nivel_decisao(regime)
     L += ["", "## Regras" + (f" (nível m*={m})" if m is not None else ""), ""] + [f"- {e}" for e in expl]
+    if m is not None:
+        ruins = [t for t in analise.TIPOS_AB if calib.get((t, m), {}).get("ok") is False]
+        if ruins:
+            linha += (f". Aviso (tarefa {', '.join(ruins)}): calibração fora de ±0,03 no nível m*: premissa de H_orc "
+                      "(mesmo nível de aprendizado) enfraquecida")
     L += ["", "## (h) Linha final", "", linha, ""]
     with open(os.path.join(a.saida, "tabela_decisao.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))

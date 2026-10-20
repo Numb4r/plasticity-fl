@@ -14,10 +14,16 @@ Teste com CSVs sintéticos em `tempfile.mkdtemp()` (não toca em `results/`; `PL
 
     .venv/bin/python plots/test_fake.py
 
+## Código de saída
+- 0: figuras/tabela geradas.
+- 1: sem resultados em `results/` (diretório vazio, CSVs sem as colunas-chave/`gap`/`acc_nova`, ou só sementes fora de 1 a 5).
+  Os scripts imprimem "sem resultados em results/" em stderr e saem antes de criar figuras ou a pasta de saída.
+
 ## Entrada
 - `analise.carregar` lê só `results/*.csv` (sem subpastas): `<cond>_m<nivel>_<tarefa>_<semente>.csv`. Usa as colunas
   `cond`, `tipo`, `semente`, `tarefa`, `nivel` (nunca o nome do arquivo). Ignora `*_rodadas.csv`, `*_matriz.csv`,
-  `*.params.json` e descarta qualquer semente 1000, mesmo na raiz.
+  `*.params.json`. Mantém só as sementes 1 a 5 (`SEMENTES_AVALIACAO`, réplica de `src.config`) e avisa em stderr
+  quais foram descartadas (0, 6, 1000 etc.), mesmo na raiz.
 - `results/calibracao/regime.json` dá m*; `calibracao_<tarefa>_m<m>.json` e `selecao_<L2|SP>_<tarefa>_m<m*>.json`
   alimentam as tabelas (e) e (f).
 
@@ -25,6 +31,8 @@ Teste com CSVs sintéticos em `tempfile.mkdtemp()` (não toca em `results/`; `PL
 - Decisões (H_reg, H_part, H_real, H_orc, cláusula de esquecimento, rótulos de ganho) e figuras antigas usam m*.
 - m* nulo ou regime.json ausente: decisões "não avaliável (regime sem perda; ...)"; figuras antigas no maior nível
   presente, com aviso no título; fig_dose e fig_k1_mecanismo continuam.
+- Tabela (b)/(b')/(c)/(d): `n_ref` = nº de referências pareadas por semente na janela (2 vs 5 na janela 7..11).
+- Aviso na linha final se `calibracao_<A|B>_m<m*>.json` tem ok=false.
 - H_orc: no nível m*, média da métrica principal do fedavg_iid dentro do IC 95% fechado de central_aprendizado, em A e B.
 - A linha final cita o nível de cada hipótese e separa "sem vantagem a explicar" de "dados insuficientes".
 - As 27 ambiguidades e a leitura adotada estão no topo de `analise.py`.

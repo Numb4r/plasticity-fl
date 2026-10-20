@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ SEMENTES = range(1, 6)
 SAIDAS = ("fig_gap.png", "fig_norma.png", "fig_sonda.png", "fig_tradeoff.png", "fig_dose.png",
           "fig_k1_mecanismo.png", "tabela_decisao.md")
 ACC_NOVA = {1: 0.80, 3: 0.88, 10: 0.95}   # a rede nova melhora com o orçamento (eixo x da dose)
+OFFSET_COND = {c: 0.004 * i for i, c in enumerate(T_COND)}   # acc_nova difere por condição (pega x lido da errada)
 FORA = 0.3                                # armadilha: gap/esquecimento fora do nível m* são deslocados
 
 
@@ -33,7 +35,7 @@ def _escrever_json(pasta, nome, obj):
         json.dump(obj, f)
 
 
-def gerar_calib(pasta, m_star, a_m10_acima=True, regime=True):
+def gerar_calib(pasta, m_star, a_m10_acima=True, regime=True, calib_ok=True):
     """regime.json, calibracao_<tarefa>_m<m>.json e selecao_<L2|SP>_<tarefa>_m<m*>.json."""
     if regime:
         _escrever_json(pasta, "regime.json", dict(
@@ -44,14 +46,19 @@ def gerar_calib(pasta, m_star, a_m10_acima=True, regime=True):
             acima = a_m10_acima or not (t == "A" and m == 10)
             _escrever_json(pasta, f"calibracao_{t}_m{m}.json", {
                 "alvo_acc_nova_fedavg": ACC_NOVA[m] if acima else 0.88, "passos": 15 * m * 30, "epocas": 5 * m,
-                "acc_central": ACC_NOVA[m], "erro": 0.01, "ok": True, "alvo_acima_de_0.90": bool(acima and m == 10)
+                "acc_central": ACC_NOVA[m], "erro": 0.01 if calib_ok else 0.08, "ok": calib_ok, "alvo_acima_de_0.90": bool(acima and m == 10)
                 if t == "A" and m == 10 else ACC_NOVA[m] > 0.9})
     if m_star:
         for met, lam in (("L2", 1e-3), ("SP", 0.6)):
             for t in ("A", "B", "B_disjunta"):
+                # formato real de experiments/selecionar.py: notas e esquecimento são dicts {λ: valor};
+                # esquecimento_ref é float (null e esquecimento {} fora de B_disjunta)
+                bd = t == "B_disjunta"
                 _escrever_json(pasta, f"selecao_{met}_{t}_m{m_star}.json", {
-                    "lambda": lam, "notas": {"x": 0.9}, "esquecimento": 0.1, "esquecimento_ref": 0.1,
-                    "violacao": False})
+                    "tarefa": t, "metodo": met, "nivel": m_star, "lambda": lam,
+                    "notas": {"0.0001": 0.90, str(lam): 0.93, "0.5": 0.70},
+                    "esquecimento": {"0.0001": 0.20, str(lam): 0.10, "0.5": 0.04} if bd else {},
+                    "esquecimento_ref": 0.10 if bd else None, "violacao": False})
 
 
 def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
@@ -60,8 +67,8 @@ def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
     L2 e SP só existem em m*. Com m_star None, o nível 'central' dos gaps é 3 e L2/SP não existem."""
     os.makedirs(pasta, exist_ok=True)
     ref = m_star or 3
-    comum = {(tp, s): rng.normal(0, 0.02) for tp in analise.TIPOS for s in list(SEMENTES) + [1000]}
-    comum_e = {s: rng.normal(0, 0.02) for s in list(SEMENTES) + [1000]}
+    comum = {(tp, s): rng.normal(0, 0.02) for tp in analise.TIPOS for s in [0, 6] + list(SEMENTES) + [1000]}
+    comum_e = {s: rng.normal(0, 0.02) for s in [0, 6] + list(SEMENTES) + [1000]}
     for cond, T in T_COND.items():
         t = np.arange(T)
         for m in niveis:
@@ -72,7 +79,7 @@ def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
                     desloc = 0.0 if m == ref else FORA
                     lvl = np.array([_v(gap.get((cond, tipo), 0.05), x) for x in t], dtype=float) + desloc
                     tem = (t % 3 == 2) | (t >= T - 5)          # esquema v3: 5 referências na janela
-                    acc_nova = np.where(tem, ACC_NOVA[m], np.nan)
+                    acc_nova = np.where(tem, ACC_NOVA[m] + OFFSET_COND[cond], np.nan)
                     g = np.where(tem, lvl + comum[(tipo, s)] + rng.normal(0, 0.001, T), np.nan)
                     d = pd.DataFrame(dict(
                         tarefa=t, tipo=tipo, cond=cond, nivel=m, semente=s,
@@ -107,9 +114,20 @@ def plantar_1000(pasta):
     d.to_csv(os.path.join(pasta, "calibracao", "fedavg_iid_m3_A_1000.csv"), index=False)
 
 
+def plantar_sementes(pasta, sementes):
+    """Sementes fora de 1..5 (0 exploratória, 6 etc.) na RAIZ, com números absurdos: devem ser descartadas."""
+    for s in sementes:
+        for cond in ("fedavg_iid", "central_aprendizado"):
+            d = pd.read_csv(os.path.join(pasta, f"{cond}_m3_A_1.csv"))
+            d["semente"], d["gap"] = s, 0.9
+            d.to_csv(os.path.join(pasta, f"{cond}_m3_A_{s}.csv"), index=False)
+
+
+SCRIPTS = ("fig_gap", "fig_norma", "fig_sonda", "fig_tradeoff", "fig_dose", "fig_k1_mecanismo", "tabela_decisao")
+
+
 def rodar(pasta, saida):
-    for s in ("fig_gap", "fig_norma", "fig_sonda", "fig_tradeoff", "fig_dose", "fig_k1_mecanismo",
-              "tabela_decisao"):
+    for s in SCRIPTS:
         subprocess.run([sys.executable, f"plots/{s}.py", "--results", pasta, "--saida", saida],
                        cwd=RAIZ, check=True)
     for f in SAIDAS:
@@ -157,10 +175,37 @@ def main():
             esperado = 5 if c == "media_sem_particao" else 2
             assert (analise.n_referencias(df, c, tp, m, analise.JANELA_PART) == esperado).all(), (c, tp, m)
         # semente 1000 plantada na raiz e em calibracao/: nenhum número muda
+        # eixo x de fig_dose = acc_nova da PRÓPRIA condição (acc_nova difere entre condições no gerador)
+        import matplotlib.pyplot as plt
+        import fig_dose
+        fg, ax = plt.subplots()
+        fig_dose._painel(ax, df, "A", 3)
+        for cond in analise.CONDICOES_DOSE:
+            est = analise.ESTILOS[cond]
+            ls = [l for l in ax.lines if l.get_marker() == est["marker"] and l.get_markersize() == 8]
+            assert len(ls) == 1, cond
+            assert np.allclose(ls[0].get_xdata(), [ACC_NOVA[m] + OFFSET_COND[cond] for m in analise.NIVEIS],
+                               atol=1e-9), (cond, ls[0].get_xdata())
+        plt.close(fg)
+        assert len({round(OFFSET_COND[c], 6) for c in analise.CONDICOES_DOSE}) == 5
+        # sementes fora de 1..5 (1000, 0 e 6) plantadas na raiz: nenhum número muda e o aviso sai
         r0 = analise.resumo(df, "fedavg_iid", "A", 3)
         plantar_1000(p1)
-        df1 = analise.carregar(p1)
-        assert df1.equals(df) and 1000 not in set(df1["semente"])
+        plantar_sementes(p1, (0, 6))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            df1 = analise.carregar(p1)
+        assert any("0, 6, 1000" in str(x.message) for x in w), [str(x.message) for x in w]
+        assert df1.equals(df) and set(df1["semente"]) == set(analise.SEMENTES_AVALIACAO)
+        saida_p = os.path.join(base, "saida_orc_falso_plantadas")
+        pr = subprocess.run([sys.executable, "plots/tabela_decisao.py", "--results", p1, "--saida", saida_p],
+                            cwd=RAIZ, check=True, capture_output=True, text=True)
+        assert "descartadas" in pr.stderr and "0, 6, 1000" in pr.stderr, pr.stderr
+        assert open(os.path.join(saida_p, "tabela_decisao.md"), encoding="utf-8").read() == open(
+            os.path.join(base, "saida_orc_falso", "tabela_decisao.md"), encoding="utf-8").read()
+        for s_ in (0, 6):
+            for c_ in ("fedavg_iid", "central_aprendizado"):
+                os.remove(os.path.join(p1, f"{c_}_m3_A_{s_}.csv"))
         assert analise.resumo(df1, "fedavg_iid", "A", 3) == r0
         assert analise.criterios_atendidos(df1, regime)[0] == linha
         os.remove(os.path.join(p1, "fedavg_iid_m3_A_1000.csv"))
@@ -188,6 +233,22 @@ def main():
             assert trecho in md, trecho
         assert "já é um resultado" not in md          # alvo passa de 0,90 em m=10
         assert "| A | 3 |" in md and "sim" in md.split("(g) Sanidade")[1]
+        # n_ref visível: 5 na janela principal e na 7..11 de media_sem_particao; 2 na 7..11 do fedavg_iid
+        secb = md.split("## (b)")[1].split("## (c)")[0]
+        b_princ, b_jan = secb.split("## (b')")
+        assert "| fedavg_iid | " in b_princ and "n_ref=5" in b_princ and "n_ref=2" not in b_princ
+        lin = {l.split("|")[1].strip(): l for l in b_jan.splitlines() if l.startswith("| ")}
+        assert "n_ref=2" in lin["fedavg_iid"] and "n_ref=5" not in lin["fedavg_iid"]
+        assert "n_ref=5" in lin["media_sem_particao"] and "n_ref=2" in lin["central_aprendizado"]
+        assert "n_ref=5" in md.split("## (c)")[1].split("## (d)")[0]
+        # seleção de λ no formato real (dicts): tabela por λ e flag de violação
+        sec_f = md.split("## (f)")[1].split("## (g)")[0]
+        assert "**L2, tarefa B_disjunta, m=3**" in sec_f and "violação = False" in sec_f
+        assert "| 0.0001 | 0.9000 | 0.2000 | NÃO |" in sec_f.replace("| 0.0001 |", "| 0.0001 |")
+        assert "(escolhido)" in sec_f and "| 0.5 | 0.7000 | 0.0400 | sim |" in sec_f
+        assert "n/d (limite só medido em B_disjunta)" in sec_f      # tarefas A e B
+        assert "calibração fora de ±0,03" not in md                 # calib ok=true: sem aviso
+        assert "Traceback" not in md
 
         # ---- 1b: H_orc VERDADEIRO (central_aprendizado no mesmo nível que fedavg), H_part: sem vantagem
         gap1b = dict(gap1)
@@ -203,11 +264,28 @@ def main():
         a, b = analise.resumo(df, "sem_media_k1", "A", 3), analise.resumo(df, "central_passos", "A", 3)
         assert analise._sobrepoe(a, b)
 
-        # ---- 1c: H_orc FALSO por limite exato fora do IC (fedavg abaixo de central_aprendizado)
+        # ---- 1c: H_orc FALSO só na tarefa A (central_aprendizado A bem acima de fedavg_iid A, B igual)
         gap1c = dict(gap1)
         gap1c.update({("central_aprendizado", "A"): .40, ("central_aprendizado", "B"): .20})
-        _, df, regime, linha, expl = cenario(base, "orc_A_fora", 3, SEMENTES, TP, gap1c, esq1, rng)
+        _, df, regime, linha, expl = cenario(base, "orc_falso_so_em_A", 3, SEMENTES, TP, gap1c, esq1, rng)
         assert expl[3].startswith("H_orc: não atendida") and "A=False, B=True" in expl[3], expl[3]
+
+        # ---- 1d: calibração com ok=false em A -> aviso na linha final da tabela
+        _, df, regime, linha, expl = cenario(base, "calib_ruim", 3, SEMENTES, TP, gap1, esq1, rng,
+                                             figuras=True, calib_ok=False)
+        md = open(os.path.join(base, "saida_calib_ruim", "tabela_decisao.md"), encoding="utf-8").read()
+        final = md.split("## (h) Linha final")[1]
+        assert ("calibração fora de ±0,03 no nível m*: premissa de H_orc (mesmo nível de aprendizado) "
+                "enfraquecida") in final, final
+        assert "tarefa A, B" in final and "ok" in md
+
+        # ---- 1e: H_part reprova por (i): media_sem_particao longe de central_aprendizado, (ii) vale
+        gap1e = dict(gap1)
+        gap1e.update({("fedavg_iid", "B"): .20, ("central_aprendizado", "B"): lambda t: .05 if t >= 20 else .20,
+                      ("media_sem_particao", "B"): .05})
+        _, df, regime, linha, expl = cenario(base, "part_i", 3, SEMENTES, TP, gap1e, esq1, rng)
+        assert expl[1] == "H_part: não atendida ((i)=False, (ii)=True)", expl[1]
+        assert "H_part (m=3)" not in linha, linha
 
         # ---- 2: m* nulo -> tudo não avaliável; figuras antigas no maior nível com aviso
         gap2 = {("fedavg_iid", t): .20 for t in TP}
@@ -279,6 +357,22 @@ def main():
         assert set(df[df.cond == "central_L2"]["nivel"]) == {1} and "m*=1" in linha
         assert linha.startswith("Critérios atendidos: H_real (m=1)"), linha
 
+        # ---- 9: results/ vazio, sem colunas ou só com sementes descartadas: código 1, mensagem, nada criado
+        vazio = os.path.join(base, "r_vazio")
+        os.makedirs(vazio)
+        semcol = os.path.join(base, "r_semcol")
+        os.makedirs(semcol)
+        pd.DataFrame({"x": [1, 2]}).to_csv(os.path.join(semcol, "fedavg_iid_m3_A_1.csv"), index=False)
+        so0 = os.path.join(base, "r_so_semente0")
+        gerar(so0, 3, [0], ["A"], {}, {}, rng)
+        for nome in ("r_vazio", "r_semcol", "r_so_semente0"):
+            for sc in SCRIPTS:
+                saida = os.path.join(base, "saida_" + nome)
+                pr = subprocess.run([sys.executable, f"plots/{sc}.py", "--results", os.path.join(base, nome),
+                                     "--saida", saida], cwd=RAIZ, capture_output=True, text=True)
+                assert pr.returncode == 1, (nome, sc, pr.returncode, pr.stderr)
+                assert "sem resultados em" in pr.stderr and "Traceback" not in pr.stderr, (nome, sc, pr.stderr)
+                assert not os.path.exists(saida), (nome, sc)     # nenhuma figura nem pasta vazia
         assert analise.bootstrap_ic([1, 2, 3, 4]) == analise.bootstrap_ic([1, 2, 3, 4])
         print("OK: 7 arquivos gerados (fig_dose e fig_k1_mecanismo inclusos) e vereditos conferidos")
     finally:

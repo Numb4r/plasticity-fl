@@ -21,6 +21,7 @@ LINHAS = [("dorm_tau0_l2", "dormentes, tau=0 (fração da camada)"),
 def main():
     a = _comum.args_padrao(__doc__)
     df = analise.carregar(a.results)
+    _comum.exigir_resultados(df, a.results)
     os.makedirs(a.saida, exist_ok=True)
     fig, axs = plt.subplots(len(LINHAS), 3, figsize=(15, 12), sharex="col")
     for i, (col, rotulo) in enumerate(LINHAS):

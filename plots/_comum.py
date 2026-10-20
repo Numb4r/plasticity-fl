@@ -18,9 +18,22 @@ def args_padrao(desc):
     return p.parse_args()
 
 
+COLUNAS_METRICA = {"gap", "acc_nova"}   # sem elas não há métrica principal
+
+
+def exigir_resultados(df, results):
+    """Sem CSVs válidos (ou sem as colunas da métrica): mensagem clara e saída com código 1,
+    antes de criar qualquer figura ou pasta de saída (ver README_plots.md)."""
+    if df.empty or not COLUNAS_METRICA <= set(df.columns):
+        print(f"sem resultados em {results}/ (nenhum CSV válido das sementes 1 a 5 com as colunas "
+              f"{sorted(analise.COLUNAS_CHAVE | COLUNAS_METRICA)}); nada foi gerado", file=sys.stderr)
+        sys.exit(1)
+
+
 def contexto(a):
-    """Carrega CSVs e regime; devolve (df, regime, nivel de exibição, aviso)."""
+    """Carrega CSVs e regime; devolve (df, regime, nivel de exibição, aviso). Sai com código 1 se vazio."""
     df = analise.carregar(a.results)
+    exigir_resultados(df, a.results)
     regime = analise.carregar_regime(a.results)
     nivel, aviso = analise.nivel_exibicao(df, regime)
     return df, regime, nivel, aviso
