@@ -1,7 +1,7 @@
 """FedAvg simulado em PyTorch puro (sem Flower)."""
 import torch
 
-from src.config import BATCH, EPOCAS_LOCAIS, RODADAS
+from src.config import BATCH, S_LOCAL
 from src.metricas import cosseno_medio
 from src.modelo import MLP
 from src.treino import treinar_passos
@@ -31,21 +31,23 @@ def _vetor_estado(estado: dict) -> torch.Tensor:
 def treino_local(
     modelo_local: MLP, estado_global: dict, X, y, indices, gerador
 ) -> dict:
-    """Um cliente numa rodada: parte do modelo global, 3 épocas locais, batch 20.
+    """Um cliente numa rodada: parte do modelo global e faz S_LOCAL=15 passos, batch 20.
 
-    O Adam é RECRIADO a cada rodada (reset_cada = n_passos): o estado do
-    otimizador local nunca sobrevive de uma rodada para a outra.
+    O número de passos é FIXO, seja qual for o tamanho dos dados do cliente
+    (100 pontos = 3 épocas; 1000 pontos = 0,3 época). O Adam é RECRIADO a cada
+    rodada (reset_cada = S_LOCAL): o estado do otimizador local nunca sobrevive
+    de uma rodada para a outra.
     """
     modelo_local.load_state_dict(estado_global)
-    n_passos = EPOCAS_LOCAIS * (len(indices) // BATCH)
-    treinar_passos(modelo_local, X, y, indices, n_passos, BATCH, n_passos, gerador)
+    treinar_passos(modelo_local, X, y, indices, S_LOCAL, BATCH, S_LOCAL, gerador)
     return {k: v.detach().clone() for k, v in modelo_local.state_dict().items()}
 
 
 def treinar_fedavg(
-    modelo_global: MLP, X, y, particoes: list[torch.Tensor], gerador: torch.Generator
+    modelo_global: MLP, X, y, particoes: list[torch.Tensor], gerador: torch.Generator,
+    rodadas: int,
 ) -> list[float]:
-    """R=25 rodadas de FedAvg sobre o modelo global (in-place).
+    """`rodadas` rodadas de FedAvg (25·m) sobre o modelo global (in-place).
 
     Devolve o cosseno médio entre as atualizações dos clientes em cada rodada
     (NaN com 1 cliente).
@@ -53,7 +55,7 @@ def treinar_fedavg(
     cosenos = []
     local = MLP().to(X.device)
     pesos = [len(p) for p in particoes]
-    for _ in range(RODADAS):
+    for _ in range(rodadas):
         global_antes = {k: v.detach().clone() for k, v in modelo_global.state_dict().items()}
         vetor_global = _vetor_estado(global_antes)
         estados = [treino_local(local, global_antes, X, y, p, gerador) for p in particoes]

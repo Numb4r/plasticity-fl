@@ -17,7 +17,8 @@ def rotulos_tarefa(tipo: str, sem: int, t: int, X: torch.Tensor) -> torch.Tensor
 
     A: sorteados de novo a cada tarefa, sem estrutura (memorização).
     B: uma MLP professora recém-inicializada (semente nova a cada tarefa) rotula
-       cada ponto pelo argmax das suas 10 saídas (há estrutura a aprender).
+       cada ponto pelo argmax das suas 10 saídas, depois de centralizar cada saída
+       pela média da classe (há estrutura a aprender e as classes ficam balanceadas).
     """
     if tipo == "A":
         y = torch.randint(0, CLASSES, (N,), generator=gerador(sem, "rotulos", t))
@@ -25,7 +26,10 @@ def rotulos_tarefa(tipo: str, sem: int, t: int, X: torch.Tensor) -> torch.Tensor
     if tipo in ("B", "B_disjunta"):
         professor = criar_mlp(semente(sem, "professor", t))
         with torch.no_grad():
-            return professor(X).argmax(dim=1)
+            logits = professor(X)
+            # Desvios v3 (e): centraliza cada logit pela média da sua classe sobre os
+            # pontos da tarefa; sem isso uma classe domina (maioria > 0,3 em 83-97% das tarefas).
+            return (logits - logits.mean(dim=0, keepdim=True)).argmax(dim=1)
     raise ValueError(f"tipo de tarefa desconhecido: {tipo}")
 
 
@@ -71,6 +75,10 @@ class Sequencia:
         self.tipo, self.sem = tipo, sem
         self._X_fixo = None if tipo == "B_disjunta" else gerar_X(sem)
         self._cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+
+    def maj_frac(self, t: int) -> float:
+        """Fração da classe majoritária dos rótulos da tarefa t."""
+        return torch.bincount(self.dados(t)[1], minlength=CLASSES).max().item() / N
 
     def dados(self, t: int) -> tuple[torch.Tensor, torch.Tensor]:
         if t not in self._cache:

@@ -113,11 +113,11 @@ def test_central_passos_faz_o_mesmo_numero_de_passos_de_um_cliente_do_fedavg(mon
     X, y = gerar_X(0), rotulos_tarefa("A", 0, 0, gerar_X(0))
     g = torch.Generator().manual_seed(0)
 
-    treinar_fedavg(criar_mlp(1), X, y, particionar("iid", 0), g)
+    treinar_fedavg(criar_mlp(1), X, y, particionar("iid", 0), g, config.RODADAS_BASE)
     passos_por_cliente = contagem["passos"] / config.CLIENTES
 
     contagem["passos"] = 0
-    treinar_na_tarefa(condicao_base("central_passos"), criar_mlp(1), X, y, 0, None, g)
+    treinar_na_tarefa(condicao_base("central_passos"), criar_mlp(1), X, y, None, g)
     assert passos_por_cliente == contagem["passos"] == config.PASSOS_CLIENTE == 375
 
 
@@ -131,9 +131,9 @@ def test_central_recria_o_adam_no_ritmo_de_uma_rodada(monkeypatch):
 
     monkeypatch.setattr(torch.optim.Adam, "__init__", contando)
     X, y = gerar_X(0), rotulos_tarefa("A", 0, 0, gerar_X(0))
-    treinar_na_tarefa(condicao_base("central_passos"), criar_mlp(1), X, y, 0, None,
+    treinar_na_tarefa(condicao_base("central_passos"), criar_mlp(1), X, y, None,
                       torch.Generator().manual_seed(0))
-    assert criados["n"] == config.RODADAS     # 375 passos / 15 = 25 Adams
+    assert criados["n"] == config.RODADAS_BASE     # 375 passos / 15 = 25 Adams
 
 
 def test_fedavg_k1_global_igual_ao_cliente(monkeypatch):
@@ -141,14 +141,13 @@ def test_fedavg_k1_global_igual_ao_cliente(monkeypatch):
     import src.federado as federado
     from src.modelo import MLP
 
-    monkeypatch.setattr(federado, "RODADAS", 1)
     X, y = gerar_X(0), rotulos_tarefa("A", 0, 0, gerar_X(0))
     part = particionar("um", 0)
     inicial = criar_mlp(5)
     esperado = federado.treino_local(
         MLP().to(X.device), _estado(inicial), X, y, part[0], torch.Generator().manual_seed(4))
     global_ = copy.deepcopy(inicial)
-    federado.treinar_fedavg(global_, X, y, part, torch.Generator().manual_seed(4))
+    federado.treinar_fedavg(global_, X, y, part, torch.Generator().manual_seed(4), 1)
     assert _iguais(_estado(global_), esperado)
 
 
@@ -167,8 +166,9 @@ def test_fedavg_recria_o_adam_a_cada_rodada_de_cada_cliente(monkeypatch):
 
     monkeypatch.setattr(torch.optim.Adam, "__init__", contando)
     X, y = gerar_X(0), rotulos_tarefa("A", 0, 0, gerar_X(0))
-    treinar_fedavg(criar_mlp(1), X, y, particionar("iid", 0), torch.Generator().manual_seed(0))
-    assert criados["n"] == config.CLIENTES * config.RODADAS
+    treinar_fedavg(criar_mlp(1), X, y, particionar("iid", 0), torch.Generator().manual_seed(0),
+                   config.RODADAS_BASE)
+    assert criados["n"] == config.CLIENTES * config.RODADAS_BASE
 
 
 def test_cliente_fl_faz_15_passos_por_rodada_com_batch_20(monkeypatch):
@@ -219,16 +219,21 @@ def test_l2_encolhe_a_norma_mais_que_sem_l2():
 def test_condicoes_congeladas_leem_o_json_e_recusam_calibracao_ruim(tmp_path):
     import json
     from src.condicoes import carregar_condicao
-    (tmp_path / "calibracao_A.json").write_text(json.dumps({"passos": 120, "ok": True}))
-    (tmp_path / "selecao_L2_A.json").write_text(json.dumps({"lambda": 1e-3}))
-    (tmp_path / "selecao_SP_A.json").write_text(json.dumps({"lambda": 0.6}))
-    assert carregar_condicao("central_aprendizado", "A", tmp_path).passos == 120
-    assert carregar_condicao("central_L2", "A", tmp_path).wd == 1e-3
-    assert carregar_condicao("central_SP", "A", tmp_path).sp_lambda == 0.6
-    (tmp_path / "calibracao_A.json").write_text(json.dumps({"passos": 120, "ok": False}))
+    pasta = tmp_path / "calibracao"
+    pasta.mkdir()
+    (pasta / "calibracao_A_m3.json").write_text(json.dumps({"passos": 120, "ok": True}))
+    (pasta / "selecao_L2_A_m3.json").write_text(json.dumps({"lambda": 1e-3}))
+    (pasta / "selecao_SP_A_m3.json").write_text(json.dumps({"lambda": 0.6}))
+    c = carregar_condicao("central_aprendizado", "A", 3, tmp_path)
+    assert c.passos == 120 and c.nivel == 3 and c.calibracao_ok
+    assert carregar_condicao("central_L2", "A", 3, tmp_path).wd == 1e-3
+    assert carregar_condicao("central_SP", "A", 3, tmp_path).sp_lambda == 0.6
+    # calibração fora de ±0,03 não interrompe (Desvios v3): usa o valor e marca ok=False
+    (pasta / "calibracao_A_m3.json").write_text(json.dumps({"passos": 120, "ok": False}))
+    assert not carregar_condicao("central_aprendizado", "A", 3, tmp_path).calibracao_ok
     import pytest
-    with pytest.raises(RuntimeError):
-        carregar_condicao("central_aprendizado", "A", tmp_path)
+    with pytest.raises(FileNotFoundError):                 # outro nível: sem calibração congelada
+        carregar_condicao("central_aprendizado", "A", 10, tmp_path)
 
 
 def test_csv_valido_exige_mesmos_parametros_e_numero_de_tarefas(tmp_path):
@@ -293,7 +298,7 @@ def test_matriz_tem_diagonal_igual_a_acuracia_de_treino_no_fim_de_cada_tarefa(tm
     from src.condicoes import executar
     cond = replace(condicao_base("central_passos"), T=4, passos=30)
     df = executar(cond, "B_disjunta", 0, tmp_path)
-    mat = pd.read_csv(tmp_path / "central_passos_B_disjunta_0_matriz.csv", index_col="i")
+    mat = pd.read_csv(tmp_path / "central_passos_m1_B_disjunta_0_matriz.csv", index_col="i")
     diag = [mat.iloc[i, i] for i in range(4)]
     assert all(abs(d - a) < 1e-9 for d, a in zip(diag, df["acc_cont"]))   # CSV perde a 16ª casa
     assert mat.iloc[0, 1:].isna().all() and mat.iloc[3].notna().all()   # triangular
@@ -305,7 +310,7 @@ def test_tarefas_a_e_b_nao_medem_esquecimento(tmp_path):
     from src.condicoes import executar
     df = executar(replace(condicao_base("central_passos"), T=2, passos=15), "A", 0, tmp_path)
     assert "esquecimento" not in df.columns
-    assert not (tmp_path / "central_passos_A_0_matriz.csv").exists()
+    assert not (tmp_path / "central_passos_m1_A_0_matriz.csv").exists()
 
 
 def test_csv_valido_detecta_csv_truncado_e_params_ausentes(tmp_path):
@@ -314,8 +319,8 @@ def test_csv_valido_detecta_csv_truncado_e_params_ausentes(tmp_path):
     from src.condicoes import csv_valido, executar
     cond = replace(condicao_base("central_passos"), T=3, passos=15)
     executar(cond, "A", 0, tmp_path)
-    csv = tmp_path / "central_passos_A_0.csv"
-    params = tmp_path / "central_passos_A_0.params.json"
+    csv = tmp_path / "central_passos_m1_A_0.csv"
+    params = tmp_path / "central_passos_m1_A_0.params.json"
     assert csv_valido(cond, "A", 0, tmp_path)
     pd.read_csv(csv).head(2).to_csv(csv, index=False)        # CSV truncado, params iguais
     assert not csv_valido(cond, "A", 0, tmp_path)
@@ -349,9 +354,9 @@ def test_fedavg_em_b_disjunta_usa_x_t_e_aplica_a_particao(tmp_path):
     cond = replace(condicao_base("fedavg_iid"), T=3)
     df = executar(cond, "B_disjunta", 0, tmp_path)
     seq = Sequencia("B_disjunta", 0)
-    assert len(df) == 3 and df["acc_nova"].notna().sum() == 1          # rede nova na tarefa 2
+    assert len(df) == 3 and df["acc_nova"].notna().sum() == 3          # T=3: todas são "últimas 5"
     assert not torch.equal(seq.dados(0)[0], seq.dados(2)[0])
-    assert (tmp_path / "fedavg_iid_B_disjunta_0_rodadas.csv").exists()   # 10 clientes
+    assert (tmp_path / "fedavg_iid_m1_B_disjunta_0_rodadas.csv").exists()   # 10 clientes
     assert df["rank_ef"].notna().all() and df["esquecimento"].iloc[1:].notna().all()
 
 
@@ -362,3 +367,171 @@ def test_sementes_antigas_nao_mudaram_com_os_papeis_novos():
         "sp_ruido", "sonda_alvo", "sonda_nova", "sonda_embaralha",
         "calib_nova", "calib_embaralha")
     assert PAPEIS[14:] == ("media_tarefa", "dados_tarefa")
+
+
+# ---------- Desvios v3: S_local fixo, níveis, rede nova, sementes, balanceamento ----------
+
+def test_tres_modos_de_fl_fazem_o_mesmo_numero_de_passos_por_cliente(monkeypatch):
+    contagem = {"passos": 0}
+    original = torch.optim.Adam.step
+
+    def contando(self, *a, **k):
+        contagem["passos"] += 1
+        return original(self, *a, **k)
+
+    monkeypatch.setattr(torch.optim.Adam, "step", contando)
+    X, y = gerar_X(1), rotulos_tarefa("A", 1, 0, gerar_X(1))
+    por_cliente = {}
+    for modo in ("iid", "um", "total"):
+        contagem["passos"] = 0
+        part = particionar(modo, 1)
+        treinar_fedavg(criar_mlp(1), X, y, part, torch.Generator().manual_seed(0), 1)   # 1 rodada
+        por_cliente[modo] = contagem["passos"] / len(part)
+    assert por_cliente == {"iid": 15, "um": 15, "total": 15} and config.S_LOCAL == 15
+
+
+def test_nivel_m_multiplica_rodadas_e_passos():
+    for m in config.NIVEIS:
+        assert condicao_base("fedavg_iid", m).rodadas == 25 * m
+        assert condicao_base("media_sem_particao", m).rodadas == 25 * m
+        assert condicao_base("central_passos", m).passos == 375 * m
+
+
+def test_tarefas_com_nova():
+    assert config.tarefas_com_nova(30) == [2, 5, 8, 11, 14, 17, 20, 23, 25, 26, 27, 28, 29]
+    assert config.tarefas_com_nova(12) == [2, 5, 7, 8, 9, 10, 11]
+
+
+def test_gap_so_existe_onde_ha_rede_nova_e_e_pareado(tmp_path):
+    from dataclasses import replace
+    from src.condicoes import executar
+    cond = replace(condicao_base("central_passos"), T=9, passos=15)
+    df = executar(cond, "A", 1, tmp_path)
+    com_nova = config.tarefas_com_nova(9)
+    assert list(df.index[df["acc_nova"].notna()]) == com_nova == list(df.index[df["gap"].notna()])
+    ok = df.dropna(subset=["gap"])
+    assert ((ok["acc_cont"] - ok["acc_nova"]) - ok["gap"]).abs().max() < 1e-12
+    assert (df["nivel"] == 1).all() and df["maj_frac"].between(0.0, 1.0).all()
+
+
+def test_sementes_de_calibracao_e_avaliacao_sao_disjuntas(tmp_path):
+    import pytest
+    from dataclasses import replace
+    from src.condicoes import executar
+    assert config.SEMENTE_CALIB not in config.SEMENTES_AVALIACAO
+    assert 0 not in config.SEMENTES_AVALIACAO            # a semente 0 do desenho antigo é exploratória
+    papeis = {semente(config.SEMENTE_CALIB, p, i) for p in PAPEIS for i in range(30)}
+    avalia = {semente(s, p, i) for s in config.SEMENTES_AVALIACAO for p in PAPEIS for i in range(30)}
+    assert not papeis & avalia
+    cond = replace(condicao_base("central_passos"), T=1, passos=15)
+    with pytest.raises(ValueError):                      # 1000 fora de .../calibracao/
+        executar(cond, "A", config.SEMENTE_CALIB, tmp_path)
+    with pytest.raises(ValueError):                      # semente de avaliação dentro de .../calibracao/
+        executar(cond, "A", 1, tmp_path / "calibracao")
+    executar(cond, "A", config.SEMENTE_CALIB, tmp_path / "calibracao")     # permitido
+
+
+def test_professor_balanceado_em_b_e_b_disjunta():
+    from src.dados import Sequencia
+    for tipo in ("B", "B_disjunta"):
+        for sem in (1, 2, 3, 4, 5, config.SEMENTE_CALIB):
+            seq = Sequencia(tipo, sem)
+            assert all(seq.maj_frac(t) < 0.3 for t in range(10)), (tipo, sem)
+            assert len(seq.dados(0)[1].unique()) >= 8        # nada de tarefa com 1 ou 2 classes
+
+
+def test_csv_valido_rejeita_outro_nivel_e_outra_versao_dos_dados(tmp_path):
+    from dataclasses import replace
+    from src.condicoes import csv_valido, executar
+    cond = replace(condicao_base("central_passos"), T=2, passos=15)
+    executar(cond, "A", 1, tmp_path)
+    assert csv_valido(cond, "A", 1, tmp_path)
+    assert not csv_valido(replace(cond, versao_dados=1), "A", 1, tmp_path)
+    assert not csv_valido(replace(cond, rodadas=75, nivel=3), "A", 1, tmp_path)   # arquivo é de outro nível
+
+
+def test_calibracao_incremental_igual_a_treinos_separados():
+    from src.treino import treinar_passos
+    from src.metricas import acuracia
+    X, y = gerar_X(1000), rotulos_tarefa("A", 1000, 0, gerar_X(1000))
+    todos = torch.arange(config.N, device=X.device)
+    lidas = {}
+    m = criar_mlp(7)
+    treinar_passos(m, X, y, todos, 90, config.BATCH, config.RESET_CENTRAL,
+                   torch.Generator().manual_seed(3),
+                   ao_fim_de_bloco=lambda k: lidas.__setitem__(k, acuracia(m, X, y)))
+    assert sorted(lidas) == [15, 30, 45, 60, 75, 90]
+    for k in (15, 45, 90):                                # inclui cruzar a fronteira de época (50 lotes)
+        m2 = criar_mlp(7)
+        treinar_passos(m2, X, y, todos, k, config.BATCH, config.RESET_CENTRAL,
+                       torch.Generator().manual_seed(3))
+        assert abs(acuracia(m2, X, y) - lidas[k]) < 1e-12
+
+
+def test_calibrar_nao_interrompe_fora_da_tolerancia(tmp_path, monkeypatch):
+    import json
+    import numpy as np
+    import pandas as pd
+    import experiments.calibrar as cal
+    pasta = tmp_path / "calibracao"
+    pasta.mkdir()
+    tarefas = config.tarefas_com_nova(config.T_PADRAO)
+    nova = np.full(config.T_PADRAO, np.nan)
+    nova[tarefas] = 0.99                                   # alvo inalcançável com 45 passos
+    pd.DataFrame({"tarefa": range(config.T_PADRAO), "acc_nova": nova}).to_csv(
+        pasta / "fedavg_iid_m1_A_1000.csv", index=False)
+    monkeypatch.setattr(cal, "PASSOS_MAX_CALIB", 45)
+    res = cal.calibrar("A", 1, tmp_path)
+    assert res["passos"] in (15, 30, 45) and res["ok"] is False
+    assert json.loads((pasta / "calibracao_A_m1.json").read_text())["ok"] is False
+
+
+def test_selecao_respeita_o_limite_de_esquecimento(tmp_path, monkeypatch):
+    import pandas as pd
+    import experiments.selecionar as sel
+
+    def falso(acc, esq):
+        return pd.DataFrame({"acc_cont": [acc] * 5, "esquecimento": [esq] * 5})
+
+    tabela = {"central_aprendizado": falso(0.5, 0.10), "_lam0.0001": falso(0.90, 0.30),
+              "_lam0.001": falso(0.80, 0.14), "_lam0.01": falso(0.60, 0.05)}
+    monkeypatch.setattr(sel, "_rodar", lambda cond, tarefa, pasta, sufixo="":
+                        tabela[sufixo] if sufixo else tabela[cond.nome])
+    pasta = tmp_path / "calibracao"
+    pasta.mkdir()
+    import json
+    (pasta / "calibracao_B_disjunta_m3.json").write_text(json.dumps({"passos": 90, "ok": True}))
+    r = sel.selecionar("B_disjunta", "L2", 3, tmp_path)
+    assert r["lambda"] == 1e-3 and not r["violacao"]       # 0.90 viola (0.30 > 0.10+0.05); 0.80 respeita
+    # nenhum respeita: escolhe o de menor esquecimento e marca violação
+    tabela.update({"_lam0.001": falso(0.80, 0.40), "_lam0.01": falso(0.60, 0.20)})
+    r = sel.selecionar("B_disjunta", "L2", 3, tmp_path)
+    assert r["lambda"] == 1e-2 and r["violacao"]
+    # em A não há esquecimento medido: vale só a acurácia
+    (pasta / "calibracao_A_m3.json").write_text(json.dumps({"passos": 90, "ok": True}))
+    tabela.update({"_lam0.4": falso(0.70, 0.0), "_lam0.6": falso(0.60, 0.0), "_lam0.8": falso(0.50, 0.0)})
+    assert sel.selecionar("A", "SP", 3, tmp_path)["lambda"] == 0.4
+
+
+def test_regime_de_teste_e_o_menor_nivel_com_gap_ate_menos_0_10(tmp_path):
+    import json
+    import pandas as pd
+    from experiments.pipeline import definir_regime
+    pasta = tmp_path / "calibracao"
+    pasta.mkdir()
+
+    def csv(m, gap):
+        n = [float("nan")] * 25 + [gap] * 5
+        pd.DataFrame({"tarefa": range(30), "gap": n}).to_csv(
+            pasta / f"central_aprendizado_m{m}_A_1000.csv", index=False)
+
+    for m, g in ((1, 0.12), (3, -0.05), (10, -0.40)):
+        csv(m, g)
+    assert definir_regime(tmp_path)["m_star"] == 10
+    csv(3, -0.10)
+    assert definir_regime(tmp_path)["m_star"] == 3         # -0,10 conta (<=)
+    for m in config.NIVEIS:
+        csv(m, 0.05)
+    r = definir_regime(tmp_path)
+    assert r["m_star"] is None and "não testáveis" in r["nota"]
+    assert json.loads((pasta / "regime.json").read_text())["m_star"] is None

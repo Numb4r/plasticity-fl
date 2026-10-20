@@ -16,6 +16,7 @@ def treinar_passos(
     reset_cada: int,
     gerador: torch.Generator,
     wd: float = 0.0,
+    ao_fim_de_bloco=None,
 ) -> int:
     """Treina `modelo` por exatamente `n_passos` passos de otimizador.
 
@@ -24,6 +25,8 @@ def treinar_passos(
     - O Adam é RECRIADO a cada `reset_cada` passos (estado do otimizador zerado).
       No FL local, reset_cada = n_passos: um Adam novo por rodada.
     - wd é L2 clássico: soma wd*theta ao gradiente (weight_decay do Adam).
+    - ao_fim_de_bloco(passos_feitos), se dado, é chamado cada vez que o Adam
+      completa um bloco de `reset_cada` passos (usado na calibração incremental).
     Devolve o número de passos executados (usado nos testes).
     """
     n = len(indices)
@@ -43,6 +46,8 @@ def treinar_passos(
         opt.zero_grad(set_to_none=True)
         perda(modelo(X[idx]), y[idx]).backward()
         opt.step()
+        if ao_fim_de_bloco is not None and (passo + 1) % reset_cada == 0:
+            ao_fim_de_bloco(passo + 1)
     return n_passos
 
 

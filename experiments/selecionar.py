@@ -1,7 +1,11 @@
-"""Escolhe lambda de central_L2 e central_SP na semente 0 e congela (escolha operacional 5).
+"""Escolhe lambda de central_L2 e central_SP na semente 1000 e congela (Desvios v3, item d).
 
-Critério: maior média da acurácia da rede contínua nas últimas 5 tarefas.
-Uso: python -m experiments.selecionar --tarefa A --metodo L2
+Roda só no nível do regime de teste. Critério: maior acurácia contínua média nas tarefas
+26 a 30 (0-based 25 a 29) entre os lambdas que respeitam o limite de esquecimento do
+Adendo 1 (esquecimento final <= o de central_aprendizado + 0,05). O limite só existe em
+B_disjunta; em A e B só vale a acurácia. Se nenhum lambda respeitar o limite, escolhe o de
+menor esquecimento e marca violacao=true.
+Uso: python -m experiments.selecionar --tarefa A --metodo L2 --nivel 3
 """
 import argparse
 import json
@@ -12,28 +16,46 @@ from pathlib import Path
 
 import torch
 
-from src.condicoes import Condicao, carregar_condicao, executar
+from src.condicoes import carregar_condicao, csv_valido, executar, pasta_calib
+from src.config import LIMITE_ESQUECIMENTO, NIVEIS, SEMENTE_CALIB
 
 logger = logging.getLogger(__name__)
 TAREFAS = ["A", "B", "B_disjunta"]
 GRADES = {"L2": (1e-4, 1e-3, 1e-2), "SP": (0.4, 0.6, 0.8)}
 
 
-def selecionar(tarefa: str, metodo: str, dir_res: Path) -> dict:
+def _rodar(cond, tarefa: str, pasta: Path, sufixo: str = ""):
+    import pandas as pd
+    if csv_valido(cond, tarefa, SEMENTE_CALIB, pasta, sufixo):
+        from src.condicoes import _base_arquivo
+        return pd.read_csv(pasta / f"{_base_arquivo(cond, tarefa, SEMENTE_CALIB, sufixo)}.csv")
+    return executar(cond, tarefa, SEMENTE_CALIB, pasta, sufixo=sufixo)
+
+
+def selecionar(tarefa: str, metodo: str, nivel: int, dir_res: Path) -> dict:
     dir_res = Path(dir_res)
-    base = carregar_condicao("central_aprendizado", tarefa, dir_res)
-    notas = {}
+    pasta = pasta_calib(dir_res)
+    pasta_sel = pasta / "selecao"
+    base = carregar_condicao("central_aprendizado", tarefa, nivel, dir_res)
+    esq_ref = None
+    if tarefa == "B_disjunta":     # referência do limite: central_aprendizado, semente 1000
+        esq_ref = float(_rodar(base, tarefa, pasta_sel)["esquecimento"].iloc[-1])
+    notas, esq = {}, {}
     for lam in GRADES[metodo]:
-        if metodo == "L2":
-            cond = replace(base, nome="central_L2", wd=lam)
-        else:
-            cond = replace(base, nome="central_SP", sp_lambda=lam)
-        df = executar(cond, tarefa, 0, dir_res / "selecao", sufixo=f"_lam{lam}")
+        cond = (replace(base, nome="central_L2", wd=lam) if metodo == "L2"
+                else replace(base, nome="central_SP", sp_lambda=lam))
+        df = _rodar(cond, tarefa, pasta_sel, sufixo=f"_lam{lam}")
         notas[lam] = float(df["acc_cont"].tail(5).mean())
-        logger.info("seleção %s %s lambda=%g acc_cont(últimas 5)=%.3f", metodo, tarefa, lam, notas[lam])
-    melhor = max(notas, key=notas.get)
-    res = {"tarefa": tarefa, "metodo": metodo, "lambda": melhor, "notas": notas}
-    (dir_res / f"selecao_{metodo}_{tarefa}.json").write_text(json.dumps(res, indent=1))
+        if esq_ref is not None:
+            esq[lam] = float(df["esquecimento"].iloc[-1])
+        logger.info("seleção %s %s m%d lambda=%g acc_cont(últimas 5)=%.3f esq=%s", metodo, tarefa,
+                    nivel, lam, notas[lam], f"{esq[lam]:.3f}" if esq else "n/d")
+    validos = [lam for lam in notas if esq_ref is None or esq[lam] <= esq_ref + LIMITE_ESQUECIMENTO]
+    violacao = not validos
+    melhor = (min(esq, key=esq.get) if violacao else max(validos, key=notas.get))
+    res = {"tarefa": tarefa, "metodo": metodo, "nivel": nivel, "lambda": melhor, "notas": notas,
+           "esquecimento": esq, "esquecimento_ref": esq_ref, "violacao": violacao}
+    (pasta / f"selecao_{metodo}_{tarefa}_m{nivel}.json").write_text(json.dumps(res, indent=1))
     return res
 
 
@@ -43,8 +65,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--tarefa", required=True, choices=TAREFAS)
     ap.add_argument("--metodo", required=True, choices=["L2", "SP"])
+    ap.add_argument("--nivel", required=True, type=int, choices=NIVEIS)
     ap.add_argument("--saida", default="results")
     ap.add_argument("--threads", type=int, default=1)
     a = ap.parse_args()
     torch.set_num_threads(a.threads)
-    selecionar(a.tarefa, a.metodo, Path(a.saida))
+    selecionar(a.tarefa, a.metodo, a.nivel, Path(a.saida))
