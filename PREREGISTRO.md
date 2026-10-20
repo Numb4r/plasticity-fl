@@ -42,5 +42,31 @@ Protocolo FL local: batch 20, 3 épocas locais, Adam (lr 1e-3) recriado a cada r
 11. **Sementes**: a semente s define dados X, rótulos, professores, partição e inicializações por fontes independentes (`src/sementes.py`). A mesma semente dá os mesmos X, rótulos e professores entre condições (desenho pareado).
 12. **IC 95%**: bootstrap percentil sobre as 5 sementes, 10 000 reamostragens, semente fixa.
 
+## Adendo 1 · Esquecimento como medida secundária (2026-10-20, antes de qualquer resultado)
+Acrescentado antes de rodar qualquer experimento. Não altera as hipóteses H_reg, H_part e H_real nem as tarefas A e B.
+
+**Tarefa B_disjunta.** Cada tarefa t tem o seu conjunto X_t de N=1000 pontos, X_t ~ N(mu_t, I), com mu_t sorteado com norma 3 (direção uniforme na esfera). Os rótulos vêm de uma MLP professora nova por tarefa (argmax das 10 saídas, aplicado a X_t). Todas as 7 condições rodam em B_disjunta, com T=30 (T=12 em `media_sem_particao`) e 5 sementes. A partição entre clientes é a mesma de A e B (índices fixos por semente, aplicados a cada X_t). Calibração de `central_aprendizado` e escolha de λ (L2, SP) são feitas separadamente para B_disjunta, na semente 0, com as mesmas regras. Rede nova, sondas, dormentes e rank efetivo usam o X_t da tarefa corrente.
+
+**Esquecimento (só em B_disjunta).** Nas tarefas A e B o mesmo X recebe rótulos conflitantes a cada tarefa, então esquecimento não é medido nelas. Em B_disjunta, depois de cada tarefa i, a rede é avaliada em (X_j, y_j) de todas as tarefas j ≤ i. A matriz a[i][j] (acurácia na tarefa j depois de treinar até a tarefa i; vazia para j > i) vai para `results/<condicao>_B_disjunta_<semente>_matriz.csv`. A diagonal a[i][i] é a acurácia de treino no fim da tarefa i. Medidas, por tarefa i:
+- acurácia média sobre as tarefas vistas: média de a[i][j], j ≤ i;
+- esquecimento médio (Chaudhry et al., 2018): média, sobre j < i, de max_{j≤l<i} a[l][j] − a[i][j] (o máximo corre de quando a tarefa j foi aprendida até a tarefa anterior a i);
+- BWT (Lopez-Paz e Ranzato, 2017): média, sobre j < i, de a[i][j] − a[j][j]. O BWT final é o do último i.
+Valor de decisão: o do último i (T−1; 11 em `media_sem_particao`), agregado entre sementes com média e IC 95% por bootstrap, como na métrica principal.
+
+**Limite de esquecimento (fixado agora).** Uma condição só conta como ganho de plasticidade se o seu esquecimento médio final em B_disjunta não passar o do contínuo sem intervenção em mais de 5 pontos percentuais, isto é, média_esq(condição) ≤ média_esq(central_aprendizado) + 0,05. O "contínuo sem intervenção" é `central_aprendizado` (centralizado sem L2 nem SP, calibrado no mesmo nível de aprendizado).
+- "Melhora plasticidade" em B_disjunta = limite inferior do IC 95% da métrica principal da condição > limite superior do IC 95% da de `central_aprendizado`.
+- A condição é marcada "ganho com violação de esquecimento" se melhora plasticidade e passa o limite; "ganho válido" se melhora e respeita o limite.
+- Efeito sobre H_real: além do critério original, `fedavg_iid` precisa respeitar o limite de esquecimento em B_disjunta. Se H_real valer pelo critério original mas `fedavg_iid` violar o limite, a tabela reporta "H_real: ganho de plasticidade com esquecimento acima do limite" e H_real não conta como atendida. H_reg e H_part não mudam.
+- A tabela de decisão e a figura `fig_tradeoff.png` (plasticidade no eixo x, esquecimento médio final no eixo y, IC 95% nos dois, faixa do limite desenhada) são só de B_disjunta.
+
 ## Desvios
-(nenhum)
+
+### 2026-10-20 · Esclarecimentos antes de qualquer resultado (auditoria pré-execução)
+Nenhum resultado existia. Não mudam hipóteses nem critérios; só fecham lacunas apontadas pelo auditor.
+1. **Calibração**: as 10 redes novas centralizadas de cada valor testado usam os rótulos das tarefas de índice 2, 5, …, 29 (as mesmas em que o `fedavg_iid` tem rede nova), em vez de 5 redes nas tarefas 0 a 4. Varredura: 15 a 1200 passos (múltiplos de 15). Empate vai para menos passos.
+2. **Seleção de λ**: empate vai para o primeiro λ da grade. Cada candidato roda a sequência completa de 30 tarefas na semente 0.
+3. **Pareamento**: dentro de uma semente, além de X, rótulos e professores, também são iguais entre condições a inicialização da rede contínua, a das redes novas, as sondas e o ruído do SP. Não muda o IC marginal de cada condição.
+4. **`sem_media_k1`** usa 150 passos por rodada (1000 pontos, batch 20, 3 épocas) com Adam recriado a cada rodada, isto é, 3750 passos por tarefa contra 375 do cliente do `fedavg_iid`. É o "mesmo protocolo local" pedido, e a interpretação deve lembrar dessa diferença de passos.
+5. **Determinismo**: o pipeline fixa CPU (`PLAST_DISPOSITIVO=cpu`) para a semente 0 sair idêntica na seleção e na avaliação.
+6. **Retomada**: o pipeline só pula um CSV se ele tiver T linhas e um arquivo `.params.json` igual aos parâmetros congelados atuais.
+7. O Adendo 1 (esquecimento e B_disjunta) foi acrescentado no mesmo dia, antes de qualquer resultado.
