@@ -131,7 +131,11 @@ g) **Nomes de arquivo**: `results/<condicao>_m<m>_<tarefa>_<semente>.csv` (e `_m
 4. Revisão do `auditor-metricas` antes de qualquer interpretação.
 
 ### Previsão do autor
-(a preencher pelo autor, antes de qualquer execução do Passo 5)
+Previsão do autor (2026-10-20, antes do teste curto). Confiança baixa.
+Nível m*: espero os primeiros indícios de perda por volta de m=5, nível que não é testado. Entre os níveis testados, m* = 10. Em m=3, sem perda clara (gap do central_aprendizado acima de −0,10).
+Tamanho: em m=10, o gap do sem_media_k1 na tarefa A fica perto de −0,4.
+FedAvg: em m*, o fedavg_iid perde plasticidade, mas menos que o central_aprendizado. Previsão para H_orc: refuta.
+H_real, H_reg, H_part e esquecimento na B_disjunta: sem previsão.
 
 ### 2026-10-20 · Errata dos Desvios v3, item (c), antes de qualquer execução
 O item (c) diz que "a janela principal e a de H_part têm agora 5 referências". Isso é verdade para a janela principal de qualquer condição e para a janela de H_part (índices 7 a 11) apenas em `media_sem_particao` (T=12). Nas condições com T=30, a janela 7 a 11 só tem rede nova nos índices 8 e 11 (t mod 3 = 2), isto é, 2 referências. O código atual implementa o texto literal (2 referências nessas condições). **Decisão pendente do autor** antes do Passo 5: (i) manter 2 referências, ou (ii) acrescentar rede nova também nos índices 7 a 11 das condições de T=30 (custo: +3 redes novas por execução). Qualquer escolha será registrada aqui antes de rodar.
