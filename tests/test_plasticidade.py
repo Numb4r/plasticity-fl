@@ -584,7 +584,8 @@ def test_redes_novas_extras_nao_alteram_o_continuo(monkeypatch):
     import src.condicoes as cs
     original = cs.tarefas_com_nova          # guarda a função real: o monkeypatch troca em cada rodada
     colunas = ["acc_cont", "norma", "distancia", "dorm_tau0_l1", "dorm_tau0_l2", "dorm_tau0025_l1",
-               "dorm_tau0025_l2", "rank_ef", "cos_medio", "sonda_razao", "maj_frac"]
+               "dorm_tau0025_l2", "rank_ef", "cos_medio", "sonda_razao", "sonda_perda_copia",
+               "sonda_perda_nova", "maj_frac"]
     casos = [
         (replace(condicao_base("central_passos"), nome="central_SP", T=30, passos=15, sp_lambda=0.8), "A"),      # SP + T=30 inteiro
         (replace(condicao_base("fedavg_iid"), T=12, rodadas=2), "B_disjunta"),            # FL + matriz de esquecimento
@@ -600,6 +601,7 @@ def test_redes_novas_extras_nao_alteram_o_continuo(monkeypatch):
             a, b = resultados["completo"], resultados[nome]
             pd.testing.assert_frame_equal(a[colunas], b[colunas], check_exact=True)
             if tipo == "B_disjunta":
-                pd.testing.assert_series_equal(a["esquecimento"], b["esquecimento"], check_exact=True)
+                for col in ("esquecimento", "bwt", "acc_media_vistas"):
+                    pd.testing.assert_series_equal(a[col], b[col], check_exact=True)
         assert resultados["completo"]["acc_nova"].notna().sum() == len(completo) > len(reduzido)
         assert resultados["nenhuma"]["acc_nova"].notna().sum() == 0

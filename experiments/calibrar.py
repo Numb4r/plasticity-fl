@@ -3,7 +3,7 @@
 Varre o número de passos em múltiplos de 15 (até PASSOS_MAX_CALIB) e escolhe o que deixa
 a acurácia média da rede nova centralizada mais perto da acurácia média das redes novas
 do fedavg_iid (semente 1000, mesmo nível m). As redes calibradas usam as MESMAS tarefas
-em que o fedavg_iid tem rede nova (t mod 3 = 2 e as 5 últimas) e sementes próprias.
+em que o fedavg_iid tem rede nova (t mod 3 = 2, as 5 últimas e os índices 7 a 11: 16 tarefas com T=30) e sementes próprias.
 Cada rede é treinada uma única vez, lendo a acurácia a cada 15 passos; isso é idêntico a
 treinar separadamente para cada número de passos (o fluxo de lotes é o mesmo prefixo).
 Fora de ±0,03 NÃO interrompe: grava ok=false e segue com o valor mais próximo.

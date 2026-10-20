@@ -100,6 +100,10 @@ def fase_teste_curto(ex, dir_res: Path) -> dict:
     logger.info("TESTE CURTO (semente %d, tarefa A) gaps das 5 últimas tarefas: %s", SEMENTE_CALIB,
                 {k: round(v, 3) for k, v in gaps.items()})
     logger.info("central_passos m=10 perde plasticidade (gap <= %.2f)? %s", LIMITE_PERDA, perde)
+    if not perde:
+        logger.warning("PARE: central_passos em m=10 NÃO perde plasticidade (gap=%.3f > %.2f). "
+                       "Não siga para o completo; mostre este log ao autor.",
+                       gaps["central_passos_m10"], LIMITE_PERDA)
     return {"gaps": gaps, "central_passos_m10_perde": perde}
 
 
