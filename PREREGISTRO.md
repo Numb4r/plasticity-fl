@@ -70,3 +70,13 @@ Nenhum resultado existia. Não mudam hipóteses nem critérios; só fecham lacun
 5. **Determinismo**: o pipeline fixa CPU (`PLAST_DISPOSITIVO=cpu`) para a semente 0 sair idêntica na seleção e na avaliação.
 6. **Retomada**: o pipeline só pula um CSV se ele tiver T linhas e um arquivo `.params.json` igual aos parâmetros congelados atuais.
 7. O Adendo 1 (esquecimento e B_disjunta) foi acrescentado no mesmo dia, antes de qualquer resultado.
+
+### 2026-10-20 · Regras de análise fixadas antes de qualquer resultado (auditoria nº 2)
+Leituras do texto de "Hipóteses e critérios" adotadas no código de análise (`plots/analise.py`):
+1. **H_reg**: o mesmo candidato (L2 ou SP) precisa ficar dentro do IC 95% do `fedavg_iid` em A e em B. Candidatos diferentes por tarefa não contam. Intervalos fechados (limites inclusivos).
+2. **H_part (ii)** usa a janela das tarefas 8 a 12 (índices 7 a 11) em B; a **pré-condição** usa a janela principal (índices 25 a 29). As duas janelas coexistem na mesma regra.
+3. "Sobrepõe" = inf₁ ≤ sup₂ e inf₂ ≤ sup₁. "Sem sobreposição, fedavg acima" = inf(fedavg) > sup(outra). H_real usa desigualdade estrita.
+4. A janela "últimas 5" usa o T da própria condição. Só entram tarefas com gap definido (índices com t mod 3 = 2). Sementes sem nenhum gap na janela são descartadas.
+5. Cada IC é um bootstrap percentil próprio (10 000 reamostragens das sementes, `default_rng(0)`); como o gerador e n são iguais, as reamostragens usam os mesmos índices de semente em todas as condições. Isso não muda o IC marginal de cada condição.
+6. Com menos de 2 sementes o IC é indefinido e o critério sai "não avaliável"; isso não conta como atendido nem como não atendido. A linha final separa "sem vantagem a explicar" (pré-condição de H_part falhou) de "dados insuficientes".
+7. Rótulo da figura de distância: ‖Δθ‖ na tarefa, medida depois do passo SP.
