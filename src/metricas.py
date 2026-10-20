@@ -47,6 +47,18 @@ def rank_efetivo(h: torch.Tensor) -> float:
     return math.exp(-(p * p.log()).sum().item())
 
 
+@torch.no_grad()
+def srank(M: torch.Tensor, delta: float = 0.01) -> float:
+    """srank (Definição 4.1 de Klein et al.): o menor k tal que os k maiores valores
+    singulares somam pelo menos (1 - delta) da soma de todos. Matriz toda zero dá 0."""
+    s = torch.linalg.svdvals(M.float())
+    total = s.sum()
+    if total.item() == 0.0:
+        return 0.0
+    acumulado = s.cumsum(0) / total
+    return float((acumulado >= 1.0 - delta).nonzero()[0].item() + 1)
+
+
 def cosseno_medio(atualizacoes: list[torch.Tensor]) -> float:
     """Cosseno médio entre pares de atualizações de clientes. NaN se há 1 cliente."""
     k = len(atualizacoes)
@@ -68,4 +80,5 @@ def metricas_modelo(modelo: MLP, X: torch.Tensor, taus: tuple[float, ...]) -> di
         out[f"dorm_tau{nome}_l1"] = fracao_dormentes(h1, tau)
         out[f"dorm_tau{nome}_l2"] = fracao_dormentes(h2, tau)
     out["rank_ef"] = rank_efetivo(h2)
+    out["srank_feat"] = srank(h2, 0.01)     # Desvios v3.1; o rank_ef acima não muda
     return out

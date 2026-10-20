@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src import config
+from src.diagnosticos import medir, vazio
 from src.config import (
     BATCH, N, PASSOS_CLIENTE, RESET_CENTRAL, RODADAS_BASE, S_LOCAL, SEMENTE_CALIB,
     SONDA_CADA, SP_RUIDO, T_PADRAO, T_SEM_PARTICAO, TAUS, VERSAO_DADOS, tarefas_com_nova,
@@ -124,14 +126,21 @@ def _sp(cond: Condicao, modelo, sem: int, t: int, quem: int) -> None:
         shrink_and_perturb(modelo, cond.sp_lambda, SP_RUIDO, gerador(sem, "sp_ruido", t, quem))
 
 
-def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "") -> pd.DataFrame:
+def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
+             diagnosticos: bool | None = None) -> pd.DataFrame:
     """Percorre as T tarefas de uma condição, nível, tipo de tarefa e semente.
 
     Salva saida/<condicao>_m<nivel>_<tarefa>_<semente>.csv (uma linha por tarefa) e,
     nas condições com mais de 1 cliente, ..._rodadas.csv com o cosseno por rodada.
     A semente de calibração (1000) só pode gravar dentro de .../calibracao/, e as
     outras sementes nunca ali: assim a análise confirmatória não a enxerga.
+
+    diagnosticos (Desvios v3.1): liga as métricas de Klein et al. no início e no fim de cada
+    tarefa, no contínuo e em cada rede nova. Padrão: ligado, menos na semente de calibração.
+    Nunca altera o contínuo (tudo numa cópia, com geradores próprios).
     """
+    if diagnosticos is None:
+        diagnosticos = sem != SEMENTE_CALIB
     saida = Path(saida)
     if (sem == SEMENTE_CALIB) != (SUBPASTA_CALIB in saida.parts):
         raise ValueError(f"semente {sem}: saída {saida} inconsistente com a regra da pasta '{SUBPASTA_CALIB}'")
@@ -144,11 +153,16 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "")
     particoes = particionar(cond.particao, sem) if cond.familia == "fl" else None
     continua = criar_mlp(semente(sem, "init_continua"))
     linhas, rodadas = [], []
+    v_cont = None                               # autovetor da Hessiana (só usado no corte (b))
     for t in range(cond.T):
         X, y = seq.dados(t)
         if t >= 1:
             _sp(cond, continua, sem, t, 0)
         theta0 = vetor_parametros(continua)
+        completo = (not config.DIAG_SO_REFERENCIAS) or t in com_nova     # corte (c)
+        d_ini = d_fim = {}
+        if diagnosticos:                        # início da tarefa: depois do SP, antes do 1º passo
+            d_ini, v_cont = medir(continua, X, y, sem, t, 0, 0, "ini_", v_cont, completo)
         cos = treinar_na_tarefa(cond, continua, X, y, particoes,
                                 gerador(sem, "embaralha_continua", t))
         linha = {"tarefa": t, "tipo": tipo, "cond": cond.nome, "nivel": cond.nivel, "semente": sem,
@@ -157,6 +171,10 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "")
                  "norma": norma_parametros(continua),
                  "distancia": (vetor_parametros(continua) - theta0).norm().item()}
         linha.update(metricas_modelo(continua, X, TAUS))
+        if diagnosticos:                        # fim da tarefa
+            d_fim, v_cont = medir(continua, X, y, sem, t, 1, 0, "fim_", v_cont, completo)
+            linha.update(d_ini)
+            linha.update(d_fim)
         if esquece:
             matriz[t] = linha_da_matriz(continua, seq, t, cond.T)
             linha.update(metricas_esquecimento(matriz, t))
@@ -164,11 +182,20 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "")
         rodadas += [{"tarefa": t, "rodada": r, "cos": c} for r, c in enumerate(cos)]
         # rede nova de referência: mesmo protocolo, semente própria
         nova_acc = float("nan")
+        nova_diag = (vazio("nova_ini_") | vazio("nova_fim_")) if diagnosticos else {}
         if t in com_nova:
             nova = criar_mlp(semente(sem, "init_nova", t))
             _sp(cond, nova, sem, t, 1)
+            v_nova = None
+            if diagnosticos:                    # rede nova, início: depois do SP, antes do 1º passo
+                d, v_nova = medir(nova, X, y, sem, t, 0, 1, "nova_ini_", None, completo)
+                nova_diag.update(d)
             treinar_na_tarefa(cond, nova, X, y, particoes, gerador(sem, "embaralha_nova", t))
             nova_acc = acuracia(nova, X, y)
+            if diagnosticos:                    # rede nova, fim
+                d, _ = medir(nova, X, y, sem, t, 1, 1, "nova_fim_", v_nova, completo)
+                nova_diag.update(d)
+        linha.update(nova_diag)
         linha["acc_nova"] = nova_acc
         linha["gap"] = linha["acc_cont"] - nova_acc      # sempre pareado: mesma tarefa
         sonda = {"sonda_perda_copia": float("nan"), "sonda_perda_nova": float("nan"),

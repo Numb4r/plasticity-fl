@@ -368,7 +368,8 @@ def test_sementes_antigas_nao_mudaram_com_os_papeis_novos():
         "init_continua", "init_nova", "embaralha_continua", "embaralha_nova",
         "sp_ruido", "sonda_alvo", "sonda_nova", "sonda_embaralha",
         "calib_nova", "calib_embaralha")
-    assert PAPEIS[14:] == ("media_tarefa", "dados_tarefa")
+    assert PAPEIS[14:16] == ("media_tarefa", "dados_tarefa")           # B_disjunta (Adendo 1)
+    assert PAPEIS[16:] == ("diag_indices", "diag_hess_v0")             # diagnósticos (Desvios v3.1)
 
 
 # ---------- Desvios v3: S_local fixo, níveis, rede nova, sementes, balanceamento ----------

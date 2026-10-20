@@ -62,3 +62,14 @@ def tarefas_com_nova(T: int) -> list[int]:
     Com T=30 são 16 tarefas; com T=12 as janelas coincidem e são 7."""
     return [t for t in range(T)
             if t % FRESCA_CADA == FRESCA_CADA - 1 or t >= T - FRESCA_ULTIMAS or t in JANELA_H_PART]
+
+
+# --- diagnósticos de Klein et al. (Desvios v3.1) ---
+DIAG_PONTOS_ESPECTRO = 64     # pontos fixos da tarefa para o espectro do gradiente
+SRANK_DELTA = 0.01            # Definição 4.1 do survey
+HESS_ITERS = 30               # iterações da power iteration
+HESS_TOL = 0.01               # convergiu se a variação relativa < 1% nas últimas 5 iterações
+# Cortes de custo (Desvios v3.1, aplicados em ordem só se o completo crescer > 25%):
+HESS_PONTOS = None            # (a) None = todos os pontos da tarefa; 256 = subconjunto fixo
+HESS_PARTIDA_QUENTE = False   # (b) começar do autovetor da medição anterior da mesma rede
+DIAG_SO_REFERENCIAS = False   # (c) Hessiana e espectro só nas tarefas de tarefas_com_nova
