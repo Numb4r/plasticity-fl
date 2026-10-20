@@ -76,7 +76,7 @@ Leituras do texto de "Hipóteses e critérios" adotadas no código de análise (
 1. **H_reg**: o mesmo candidato (L2 ou SP) precisa ficar dentro do IC 95% do `fedavg_iid` em A e em B. Candidatos diferentes por tarefa não contam. Intervalos fechados (limites inclusivos).
 2. **H_part (ii)** usa a janela das tarefas 8 a 12 (índices 7 a 11) em B; a **pré-condição** usa a janela principal (índices 25 a 29). As duas janelas coexistem na mesma regra.
 3. "Sobrepõe" = inf₁ ≤ sup₂ e inf₂ ≤ sup₁. "Sem sobreposição, fedavg acima" = inf(fedavg) > sup(outra). H_real usa desigualdade estrita.
-4. A janela "últimas 5" usa o T da própria condição. Só entram tarefas com gap definido (índices com t mod 3 = 2). Sementes sem nenhum gap na janela são descartadas.
+4. A janela "últimas 5" usa o T da própria condição. Só entram tarefas com gap definido (as que têm rede nova de referência: t mod 3 = 2, as 5 últimas da condição e os índices 7 a 11; ver "Decisão da Errata do item (c): opção (ii)"). Sementes sem nenhum gap na janela são descartadas.
 5. Cada IC é um bootstrap percentil próprio (10 000 reamostragens das sementes, `default_rng(0)`); como o gerador e n são iguais, as reamostragens usam os mesmos índices de semente em todas as condições. Isso não muda o IC marginal de cada condição.
 6. Com menos de 2 sementes o IC é indefinido e o critério sai "não avaliável"; isso não conta como atendido nem como não atendido. A linha final separa "sem vantagem a explicar" (pré-condição de H_part falhou) de "dados insuficientes".
 7. Rótulo da figura de distância: ‖Δθ‖ na tarefa, medida depois do passo SP.
