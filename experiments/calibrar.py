@@ -20,7 +20,7 @@ import torch
 
 from src.condicoes import pasta_calib
 from src.config import (
-    BATCH, NIVEIS, N, PASSOS_MAX_CALIB, RESET_CENTRAL, SEMENTE_CALIB, T_PADRAO, TOLERANCIA_CALIB,
+    BATCH, NIVEIS, N, PASSOS_MAX_CALIB, RESET_CENTRAL, SEMENTE_CALIB, T_PADRAO, TOLERANCIA_CALIB, VERSAO_DADOS,
     tarefas_com_nova,
 )
 from src.dados import Sequencia
@@ -35,7 +35,8 @@ TAREFAS = ["A", "B", "B_disjunta"]
 
 def calibrar(tarefa: str, nivel: int, dir_res: Path) -> dict:
     pasta = pasta_calib(dir_res)
-    tabela = pd.read_csv(pasta / f"fedavg_iid_m{nivel}_{tarefa}_{SEMENTE_CALIB}.csv")
+    origem = pasta / f"fedavg_iid_m{nivel}_{tarefa}_{SEMENTE_CALIB}"
+    tabela = pd.read_csv(f"{origem}.csv")
     if len(tabela) != T_PADRAO:
         raise ValueError(f"fedavg_iid m{nivel} {tarefa} tem {len(tabela)} tarefas, esperado {T_PADRAO}")
     ref = tabela["acc_nova"].dropna()
@@ -60,6 +61,8 @@ def calibrar(tarefa: str, nivel: int, dir_res: Path) -> dict:
     res = {"tarefa": tarefa, "nivel": nivel, "alvo_acc_nova_fedavg": alvo, "passos": melhor,
            "epocas": melhor / (N // BATCH), "acc_central": medias[melhor], "erro": erro,
            "ok": abs(erro) <= TOLERANCIA_CALIB, "alvo_acima_de_0.90": alvo > 0.90,
+           "versao_dados": VERSAO_DADOS,
+           "fedavg_params": json.loads(Path(f"{origem}.params.json").read_text()) if Path(f"{origem}.params.json").exists() else None,
            "tentativas": medias}
     (pasta / f"calibracao_{tarefa}_m{nivel}.json").write_text(json.dumps(res, indent=1))
     logger.info("calibração %s m%d: alvo=%.3f passos=%d (%.1f épocas) acc=%.3f erro=%+.3f ok=%s",

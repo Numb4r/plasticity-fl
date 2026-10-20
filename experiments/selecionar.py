@@ -17,7 +17,7 @@ from pathlib import Path
 import torch
 
 from src.condicoes import carregar_condicao, csv_valido, executar, pasta_calib
-from src.config import LIMITE_ESQUECIMENTO, NIVEIS, SEMENTE_CALIB
+from src.config import LIMITE_ESQUECIMENTO, NIVEIS, SEMENTE_CALIB, VERSAO_DADOS
 
 logger = logging.getLogger(__name__)
 TAREFAS = ["A", "B", "B_disjunta"]
@@ -32,14 +32,19 @@ def _rodar(cond, tarefa: str, pasta: Path, sufixo: str = ""):
     return executar(cond, tarefa, SEMENTE_CALIB, pasta, sufixo=sufixo)
 
 
+def referencia(tarefa: str, nivel: int, dir_res: Path) -> float:
+    """Esquecimento final de central_aprendizado (semente 1000, B_disjunta): referência do limite.
+    O pipeline roda isto uma vez antes dos jobs de L2 e SP, que depois só reaproveitam o CSV."""
+    base = carregar_condicao("central_aprendizado", tarefa, nivel, Path(dir_res))
+    return float(_rodar(base, tarefa, pasta_calib(Path(dir_res)) / "selecao")["esquecimento"].iloc[-1])
+
+
 def selecionar(tarefa: str, metodo: str, nivel: int, dir_res: Path) -> dict:
     dir_res = Path(dir_res)
     pasta = pasta_calib(dir_res)
     pasta_sel = pasta / "selecao"
     base = carregar_condicao("central_aprendizado", tarefa, nivel, dir_res)
-    esq_ref = None
-    if tarefa == "B_disjunta":     # referência do limite: central_aprendizado, semente 1000
-        esq_ref = float(_rodar(base, tarefa, pasta_sel)["esquecimento"].iloc[-1])
+    esq_ref = referencia(tarefa, nivel, dir_res) if tarefa == "B_disjunta" else None
     notas, esq = {}, {}
     for lam in GRADES[metodo]:
         cond = (replace(base, nome="central_L2", wd=lam) if metodo == "L2"
@@ -54,7 +59,8 @@ def selecionar(tarefa: str, metodo: str, nivel: int, dir_res: Path) -> dict:
     violacao = not validos
     melhor = (min(esq, key=esq.get) if violacao else max(validos, key=notas.get))
     res = {"tarefa": tarefa, "metodo": metodo, "nivel": nivel, "lambda": melhor, "notas": notas,
-           "esquecimento": esq, "esquecimento_ref": esq_ref, "violacao": violacao}
+           "esquecimento": esq, "esquecimento_ref": esq_ref, "violacao": violacao,
+           "versao_dados": VERSAO_DADOS, "passos_centrais": base.passos}
     (pasta / f"selecao_{metodo}_{tarefa}_m{nivel}.json").write_text(json.dumps(res, indent=1))
     return res
 

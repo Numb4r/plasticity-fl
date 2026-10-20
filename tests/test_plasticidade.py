@@ -9,7 +9,7 @@ from src.dados import gerar_X, particionar, rotulos_tarefa
 from src.federado import media_ponderada, treinar_fedavg
 from src.metricas import fracao_dormentes, rank_efetivo
 from src.modelo import criar_mlp
-from src.sementes import PAPEIS, semente
+from src.sementes import PAPEIS, gerador, semente
 from src.sondas import sonda_alvos_aleatorios
 
 
@@ -216,7 +216,7 @@ def test_l2_encolhe_a_norma_mais_que_sem_l2():
     assert normas[1e-2] < normas[0.0]
 
 
-def test_condicoes_congeladas_leem_o_json_e_recusam_calibracao_ruim(tmp_path):
+def test_condicoes_congeladas_leem_o_json_e_marcam_calibracao_ruim(tmp_path):
     import json
     from src.condicoes import carregar_condicao
     pasta = tmp_path / "calibracao"
@@ -483,6 +483,8 @@ def test_calibrar_nao_interrompe_fora_da_tolerancia(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "PASSOS_MAX_CALIB", 45)
     res = cal.calibrar("A", 1, tmp_path)
     assert res["passos"] in (15, 30, 45) and res["ok"] is False
+    assert abs(res["alvo_acc_nova_fedavg"] - 0.99) < 1e-12        # alvo = média das 13 acc_nova
+    assert len(res["tentativas"]) == 3 and res["versao_dados"] == config.VERSAO_DADOS
     assert json.loads((pasta / "calibracao_A_m1.json").read_text())["ok"] is False
 
 
@@ -535,3 +537,38 @@ def test_regime_de_teste_e_o_menor_nivel_com_gap_ate_menos_0_10(tmp_path):
     r = definir_regime(tmp_path)
     assert r["m_star"] is None and "não testáveis" in r["nota"]
     assert json.loads((pasta / "regime.json").read_text())["m_star"] is None
+
+
+def test_tarefa_a_nao_e_centralizada_e_b_usa_logits_centralizados():
+    from src.dados import Sequencia
+    y_a = rotulos_tarefa("A", 1, 3, gerar_X(1))
+    esperado = torch.randint(0, config.CLASSES, (config.N,), generator=gerador(1, "rotulos", 3))
+    assert torch.equal(y_a.cpu(), esperado)                          # A: sorteio puro, sem professor
+    X = gerar_X(1)
+    prof = criar_mlp(semente(1, "professor", 3))
+    with torch.no_grad():
+        bruto = prof(X).argmax(1)
+    assert not torch.equal(Sequencia("B", 1).dados(3)[1], bruto)     # B: argmax dos logits centralizados
+
+
+def test_adam_recriado_por_rodada_em_um_e_total(monkeypatch):
+    criados = {"n": 0}
+    init_original = torch.optim.Adam.__init__
+
+    def contando(self, *a, **k):
+        criados["n"] += 1
+        return init_original(self, *a, **k)
+
+    monkeypatch.setattr(torch.optim.Adam, "__init__", contando)
+    X, y = gerar_X(1), rotulos_tarefa("A", 1, 0, gerar_X(1))
+    for modo, k in (("um", 1), ("total", config.CLIENTES)):
+        criados["n"] = 0
+        treinar_fedavg(criar_mlp(1), X, y, particionar(modo, 1), torch.Generator().manual_seed(0), 4)
+        assert criados["n"] == 4 * k                                  # um Adam novo por cliente por rodada
+
+
+def test_params_das_centralizadas_nao_trazem_rodadas_nem_s_local():
+    c = condicao_base("central_passos", 10)
+    assert c.rodadas is None and c.s_local is None and c.passos == 3750
+    f = condicao_base("fedavg_iid", 10)
+    assert f.rodadas == 250 and f.s_local == 15

@@ -23,9 +23,9 @@ import pandas as pd
 import torch
 
 from experiments.calibrar import calibrar
-from experiments.selecionar import selecionar
+from experiments.selecionar import referencia, selecionar
 from src.condicoes import CONDICOES, _base_arquivo, carregar_condicao, csv_valido, executar, pasta_calib
-from src.config import NIVEIS, SEMENTE_CALIB, SEMENTES_AVALIACAO
+from src.config import NIVEIS, SEMENTE_CALIB, SEMENTES_AVALIACAO, VERSAO_DADOS
 
 logger = logging.getLogger(__name__)
 LIMITE_PERDA = -0.10        # regime de teste: central_aprendizado com gap <= -0,10 na tarefa A
@@ -51,16 +51,27 @@ def job_rodar(nome: str, tarefa: str, nivel: int, sem: int, dir_res: str) -> str
 
 def job_calibrar(tarefa: str, nivel: int, dir_res: str) -> dict:
     arq = pasta_calib(Path(dir_res)) / f"calibracao_{tarefa}_m{nivel}.json"
-    if arq.exists():                       # valor congelado: apague o JSON para recalibrar
-        return json.loads(arq.read_text())
+    if arq.exists():                       # valor congelado: só reaproveita se a origem não mudou
+        antigo = json.loads(arq.read_text())
+        origem = pasta_calib(Path(dir_res)) / f"fedavg_iid_m{nivel}_{tarefa}_{SEMENTE_CALIB}.params.json"
+        atual = json.loads(origem.read_text()) if origem.exists() else None
+        if antigo.get("versao_dados") == VERSAO_DADOS and antigo.get("fedavg_params") == atual:
+            return antigo
     return calibrar(tarefa, nivel, Path(dir_res))
 
 
 def job_selecionar(tarefa: str, metodo: str, nivel: int, dir_res: str) -> dict:
     arq = pasta_calib(Path(dir_res)) / f"selecao_{metodo}_{tarefa}_m{nivel}.json"
     if arq.exists():
-        return json.loads(arq.read_text())
+        antigo = json.loads(arq.read_text())
+        calib = json.loads((pasta_calib(Path(dir_res)) / f"calibracao_{tarefa}_m{nivel}.json").read_text())
+        if antigo.get("versao_dados") == VERSAO_DADOS and antigo.get("passos_centrais") == calib["passos"]:
+            return antigo
     return selecionar(tarefa, metodo, nivel, Path(dir_res))
+
+
+def job_referencia(tarefa: str, nivel: int, dir_res: str) -> float:
+    return referencia(tarefa, nivel, Path(dir_res))
 
 
 def gap_ultimas5(csv: Path) -> float:
@@ -104,6 +115,10 @@ def definir_regime(dir_res: Path) -> dict:
 
 
 def fase_calibracao(ex, dir_res: Path, tarefas: list[str], niveis: list[int]) -> dict:
+    """O regime de teste usa central_aprendizado na tarefa A em TODOS os níveis; por isso a
+    calibração sempre inclui a tarefa A e todos os níveis, além do que foi pedido."""
+    tarefas = sorted(set(tarefas) | {"A"})
+    niveis = list(NIVEIS)
     pasta_calib(dir_res).mkdir(parents=True, exist_ok=True)
     tempos, t = {}, time.time()
     _rodar_jobs(ex, [("fedavg_iid", k, m, SEMENTE_CALIB, str(dir_res)) for m in niveis for k in tarefas])
@@ -118,6 +133,8 @@ def fase_calibracao(ex, dir_res: Path, tarefas: list[str], niveis: list[int]) ->
     tempos["calib_3_regime"] = time.time() - t
     t = time.time()
     if regime["m_star"] is not None:
+        if "B_disjunta" in tarefas:     # referência do limite de esquecimento, uma vez só
+            ex.submit(job_referencia, "B_disjunta", regime["m_star"], str(dir_res)).result()
         for r in [ex.submit(job_selecionar, k, met, regime["m_star"], str(dir_res))
                   for k in tarefas for met in ("L2", "SP")]:
             r.result()
@@ -150,12 +167,14 @@ def main() -> None:
     ap.add_argument("--niveis", nargs="+", type=int, choices=NIVEIS, default=None)
     ap.add_argument("--sementes", nargs="+", type=int, default=None, help="padrão: 1 2 3 4 5 (1 no quick)")
     ap.add_argument("--saida", default="results")
-    ap.add_argument("--processos", type=int, default=5, help="cada processo usa ~0,6 GB")
+    ap.add_argument("--processos", type=int, default=4, help="cada processo usa ~0,6 GB; confira a memória livre")
     a = ap.parse_args()
     os.environ["PLAST_DISPOSITIVO"] = "cpu"   # o pipeline sempre usa CPU
     logging.basicConfig(level=logging.INFO)
-    if SEMENTE_CALIB in (a.sementes or ()):
-        raise SystemExit("a semente 1000 é só de calibração")
+    fora = [x for x in (a.sementes or ()) if x not in SEMENTES_AVALIACAO]
+    if fora:
+        raise SystemExit(f"sementes {fora} fora das confirmatórias {SEMENTES_AVALIACAO} "
+                         f"(a {SEMENTE_CALIB} é só de calibração; a 0 do desenho antigo é exploratória)")
     tarefas = a.tarefas or (["A"] if a.quick else ["A", "B", "B_disjunta"])
     niveis = a.niveis or list(NIVEIS)
     sementes = a.sementes or ([SEMENTES_AVALIACAO[0]] if a.quick else list(SEMENTES_AVALIACAO))

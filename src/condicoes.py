@@ -38,8 +38,8 @@ class Condicao:
     particao: str | None = None   # "iid", "um" ou "total" (só FL)
     T: int = T_PADRAO
     nivel: int = 1                # eixo de orçamento m
-    rodadas: int = RODADAS_BASE   # rodadas por tarefa = 25·m (só FL)
-    s_local: int = S_LOCAL        # passos locais por rodada (só FL)
+    rodadas: int | None = None   # rodadas por tarefa = 25·m (só FL; None nas centralizadas)
+    s_local: int | None = None   # passos locais por rodada (só FL; None nas centralizadas)
     passos: int | None = None     # passos por tarefa (só central)
     wd: float = 0.0               # L2 (só central_L2)
     sp_lambda: float | None = None  # shrink-and-perturb (só central_SP)
@@ -49,7 +49,7 @@ class Condicao:
 
 def condicao_base(nome: str, nivel: int = 1) -> Condicao:
     """Condições que não dependem de nada calibrado."""
-    comum = dict(nivel=nivel, rodadas=RODADAS_BASE * nivel)
+    comum = dict(nivel=nivel, rodadas=RODADAS_BASE * nivel, s_local=S_LOCAL)
     if nome == "fedavg_iid":
         return Condicao(nome, "fl", "iid", **comum)
     if nome == "sem_media_k1":
