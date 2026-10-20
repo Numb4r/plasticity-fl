@@ -25,3 +25,13 @@ Responder, até quinta-feira, se a vantagem do FedAvg em preservar plasticidade 
 
 ## Status
 Passo 5 PARADO: aguardando o usuário preencher "Previsão do autor" no PREREGISTRO.md (auditoria 4: sem P0/P1 no código). Passo 4 (figuras) com o gerador em andamento.
+
+## Fila (ordem fixada pelo autor)
+1. Revisão final curta (auditor) em andamento.
+2. Autor preenche "Previsão do autor" -> commit SÓ da previsão -> anotar o hash no PREREGISTRO -> lançar teste_curto.
+   Se central_passos m=10 não tiver gap <= -0,10: PARAR e mostrar o log.
+3. Depois do teste_curto, ANTES do completo: Adendo v3.1 (métricas de Klein et al. 2026), nesta ordem:
+   a) PREREGISTRO.md > Desvios (data de hoje) antes de mexer no código; métricas diagnósticas, fora dos critérios e da tabela_decisao;
+   b) métricas em src/ (norma por camada, grad L1/L2 por camada, espectro do gradiente com 64 pontos, autovalor máx. da Hessiana por power iteration);
+   c) 4 testes novos; d) medir custo em fedavg_iid m=1 (se >10%: 20 iterações e AVISAR antes de mudar qualquer outra coisa);
+   e) fig_k1_mecanismo ampliada (gerador); f) revisão do auditor; g) só então o completo.
