@@ -83,3 +83,9 @@ Leituras do texto de "Hipóteses e critérios" adotadas no código de análise (
 
 ### 2026-10-20 · Redação do Adendo 1, antes de qualquer resultado
 No Adendo 1, "passa o limite" significa **ultrapassa** o limite (média_esq > média_esq(central_aprendizado) + 0,05). Portanto: melhora plasticidade e ultrapassa o limite = "ganho com violação de esquecimento"; melhora plasticidade e respeita o limite (média_esq ≤ limite) = "ganho válido". O código de análise já implementa esse sentido. A comparação do limite usa as médias entre sementes, sem tolerância numérica; os ICs do esquecimento são só informativos.
+
+### 2026-10-20 · Leituras registradas após a auditoria nº 3 (antes de qualquer resultado)
+1. "A tabela de decisão e a figura são só de B_disjunta" (Adendo 1) vale para as colunas de plasticidade-e-esquecimento, a marcação de ganho e `fig_tradeoff.png`. As hipóteses H_reg, H_part e H_real continuam avaliadas em A e B, com a cláusula extra de esquecimento em H_real.
+2. `media_sem_particao` tem esquecimento medido na sua última tarefa (índice 11, 11 tarefas anteriores), comparado com o de `central_aprendizado` na tarefa 29. Os horizontes diferem; a marcação dela em B_disjunta deve ser lida com essa ressalva. Nenhuma hipótese depende dessa marcação.
+3. Limitação conhecida do código de análise: sem dados de B_disjunta, H_real sai "não avaliável (falta B_disjunta)" mesmo que o critério original já falhe. Só afeta execuções sem B_disjunta (como `--quick`); a leitura literal do Adendo ("além do critério original") tornaria H_real "não atendida" nesse caso. A interpretação final usa a execução completa.
+4. Risco de desenho a checar antes de interpretar esquecimento: o professor tem inicialização padrão e X_t é deslocado; se as classes ficarem muito desbalanceadas, a acurácia em tarefas antigas pode ficar alta só pela classe majoritária. O histograma de y_t é reportado junto com os resultados.

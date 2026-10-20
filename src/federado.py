@@ -1,0 +1,62 @@
+"""FedAvg simulado em PyTorch puro (sem Flower)."""
+import torch
+
+from src.config import BATCH, EPOCAS_LOCAIS, RODADAS
+from src.metricas import cosseno_medio
+from src.modelo import MLP
+from src.treino import treinar_passos
+
+
+def media_ponderada(estados: list[dict], pesos: list[int]) -> dict:
+    """Média ponderada pelo número de amostras de TODAS as entradas do state_dict.
+
+    Entradas de ponto flutuante são ponderadas; entradas inteiras (se houver,
+    como contadores) são promediadas e arredondadas para manter o dtype.
+    """
+    total = float(sum(pesos))
+    saida = {}
+    for chave in estados[0]:
+        acc = sum(e[chave].double() * (w / total) for e, w in zip(estados, pesos))
+        if estados[0][chave].is_floating_point():
+            saida[chave] = acc.to(estados[0][chave].dtype)
+        else:
+            saida[chave] = acc.round().to(estados[0][chave].dtype)
+    return saida
+
+
+def _vetor_estado(estado: dict) -> torch.Tensor:
+    return torch.cat([v.flatten().float() for v in estado.values() if v.is_floating_point()])
+
+
+def treino_local(
+    modelo_local: MLP, estado_global: dict, X, y, indices, gerador
+) -> dict:
+    """Um cliente numa rodada: parte do modelo global, 3 épocas locais, batch 20.
+
+    O Adam é RECRIADO a cada rodada (reset_cada = n_passos): o estado do
+    otimizador local nunca sobrevive de uma rodada para a outra.
+    """
+    modelo_local.load_state_dict(estado_global)
+    n_passos = EPOCAS_LOCAIS * (len(indices) // BATCH)
+    treinar_passos(modelo_local, X, y, indices, n_passos, BATCH, n_passos, gerador)
+    return {k: v.detach().clone() for k, v in modelo_local.state_dict().items()}
+
+
+def treinar_fedavg(
+    modelo_global: MLP, X, y, particoes: list[torch.Tensor], gerador: torch.Generator
+) -> list[float]:
+    """R=25 rodadas de FedAvg sobre o modelo global (in-place).
+
+    Devolve o cosseno médio entre as atualizações dos clientes em cada rodada
+    (NaN com 1 cliente).
+    """
+    cosenos = []
+    local = MLP().to(X.device)
+    pesos = [len(p) for p in particoes]
+    for _ in range(RODADAS):
+        global_antes = {k: v.detach().clone() for k, v in modelo_global.state_dict().items()}
+        vetor_global = _vetor_estado(global_antes)
+        estados = [treino_local(local, global_antes, X, y, p, gerador) for p in particoes]
+        cosenos.append(cosseno_medio([_vetor_estado(e) - vetor_global for e in estados]))
+        modelo_global.load_state_dict(media_ponderada(estados, pesos))
+    return cosenos

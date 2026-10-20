@@ -1,0 +1,10 @@
+[project]
+name = "plasticidade"
+version = "0.1.0"
+description = "FedAvg vs centralizado: perda de plasticidade (Dohare 2024, Lyle 2022)"
+requires-python = ">=3.11"
+dependencies = ["torch", "numpy", "pandas", "matplotlib", "pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
