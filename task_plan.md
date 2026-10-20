@@ -9,7 +9,7 @@ Responder, até quinta-feira, se a vantagem do FedAvg em preservar plasticidade 
 - [x] F2 Etapa 1: PREREGISTRO.md + git init + commit (ANTES de qualquer código de experimento)
 - [x] F3 Etapa 2 código: src/ (sementes, dados, modelo, métricas, sondas, treino, federado, condições)
 - [x] F4 Testes (6 pedidos) passando
-- [ ] F5 Auditoria (auditor-metricas) do código ANTES de rodar
+- [x] F5 Auditoria (auditor-metricas) do código ANTES de rodar
 - [ ] F6 Rodar: fedavg_iid sem 0 -> calibrar central_aprendizado -> selecionar L2/SP -> congelar -> resto das sementes
 - [ ] F7 Auditoria dos resultados (auditor-metricas) ANTES de interpretar
 - [ ] F8 Etapa 3: figuras + tabela_decisao.md (gerador-graficos)
@@ -24,4 +24,4 @@ Responder, até quinta-feira, se a vantagem do FedAvg em preservar plasticidade 
 - Python do sistema é 3.10; criado .venv com 3.11 (uv) e torch CPU 2.14.1.
 
 ## Status
-F5: auditoria pré-execução em andamento (auditor-metricas indisponível na sessão; usando general-purpose/opus com o corpo do auditor).
+F6: pipeline completo rodando (executor). Auditorias 1-3 sem P0/P1 abertos; código commitado em 0b1c019.

@@ -89,3 +89,46 @@ No Adendo 1, "passa o limite" significa **ultrapassa** o limite (média_esq > m�
 2. `media_sem_particao` tem esquecimento medido na sua última tarefa (índice 11, 11 tarefas anteriores), comparado com o de `central_aprendizado` na tarefa 29. Os horizontes diferem; a marcação dela em B_disjunta deve ser lida com essa ressalva. Nenhuma hipótese depende dessa marcação.
 3. Limitação conhecida do código de análise: sem dados de B_disjunta, H_real sai "não avaliável (falta B_disjunta)" mesmo que o critério original já falhe. Só afeta execuções sem B_disjunta (como `--quick`); a leitura literal do Adendo ("além do critério original") tornaria H_real "não atendida" nesse caso. A interpretação final usa a execução completa.
 4. Risco de desenho a checar antes de interpretar esquecimento: o professor tem inicialização padrão e X_t é deslocado; se as classes ficarem muito desbalanceadas, a acurácia em tarefas antigas pode ficar alta só pela classe majoritária. O histograma de y_t é reportado junto com os resultados.
+
+## Desvios v3 · Eixo de orçamento e protocolo corrigido (2026-10-20)
+Registrado ANTES de qualquer mudança de código e antes de qualquer execução confirmatória.
+
+### Motivo
+No modo rápido (semente 0), nenhuma condição de orçamento baixo (375 a 420 passos por tarefa) perdeu plasticidade. O único colapso (`sem_media_k1`, tarefa A: contínuo de 1,00 para 0,11, com acaso em 0,10, enquanto a rede nova ficou em 1,00) veio com 10 vezes mais passos por tarefa (3750 contra 375). Partição e orçamento estavam confundidos, porque o treino local era definido em épocas e cada cliente do `fedavg_iid` tem só 100 pontos. O desenho original não testa se o FedAvg protege, porque o FedAvg nunca chega ao regime em que a perda aparece.
+
+### Auditoria do Passo 1 (fatos que fundamentam as mudanças)
+- O gap já é pareado em todo o código (tarefa a tarefa, só onde há rede nova). Nenhuma tabela, figura ou decisão usa a versão não pareada.
+- A semente 0 foi usada ao mesmo tempo na calibração (alvo, dados e rótulos), na seleção de λ e na avaliação. O pré-registro só admitia o reuso para λ.
+- Passos por tarefa por cliente (T=30): `fedavg_iid` 375; `sem_media_k1` 3750; `media_sem_particao` 3750 por cliente; `central_passos` 375; `central_aprendizado` 420 (A), 405 (B_disjunta), 435 (B).
+- Classe majoritária > 0,3 em 83% a 97% das tarefas de B e de B_disjunta, em todas as sementes (0 a 5 e 1000); há tarefas com 1 classe só (B, semente 4, t=0) ou quase (B_disjunta, semente 4, t=0: 0,999). Dados em `notes.md`.
+
+### Semente 0 e sementes
+- A semente 0 do modo rápido e todos os CSVs, JSONs e matrizes do desenho antigo (incluindo os 13 CSVs do pipeline completo interrompido) passam a ser **exploratórios** e saem da análise confirmatória. Serão movidos (não apagados) para `results_v1_exploratorio/`.
+- **Semente 1000**: só para (i) alvo e calibração de `central_aprendizado`, (ii) seleção de λ de L2 e SP, (iii) definição do regime de teste. Não entra na avaliação. Seus resultados ficam em `results/calibracao/`, fora do alcance da análise.
+- **Sementes confirmatórias: 1 a 5.**
+
+### Mudanças de protocolo
+a) **Treino local em passos.** Cada cliente faz S_local = 15 passos por rodada (batch 20), seja qual for o tamanho dos seus dados, em `fedavg_iid`, `sem_media_k1` e `media_sem_particao`. O Adam continua recriado a cada rodada. Em m=1, `fedavg_iid` é idêntico ao já rodado (5 lotes × 3 épocas = 15 passos). Isso **substitui** o Desvio 4 (150 passos por rodada em `sem_media_k1`) e a leitura de "mesmo protocolo local" do item 4 de "Escolhas operacionais".
+   - Consequência declarada: `sem_media_k1` passa a executar o mesmo algoritmo que `central_passos` (1 cliente, 15 passos por rodada, Adam recriado a cada 15 passos, 25·m rodadas = 375·m passos; a média de um só modelo é exata). A única diferença é a amostragem dos lotes (permutação nova por rodada, com só 300 dos 1000 pontos usados, contra épocas contínuas). Mantida como controle de sanidade: deve coincidir com `central_passos` dentro do ruído. Se não coincidir, é resultado a reportar.
+   - `media_sem_particao` passa a diferir do `fedavg_iid` só pela fonte dos minilotes (1000 pontos comuns contra 100 próprios), não mais pelo número de passos. Isso muda a leitura de H_part (ver abaixo).
+b) **Eixo de orçamento m ∈ {1, 3, 10}**: rodadas R = 25·m em todas as condições FL. `central_passos` faz 375·m passos. `central_aprendizado` é calibrado em cada nível para a rede nova ficar a ±0,03 da rede nova do `fedavg_iid` naquele nível (calibração na semente 1000; varredura de passos em múltiplos de 15 até 15 000, por treino incremental único com leitura a cada 15 passos). Se a calibração não chegar a ±0,03, registra-se a falha e o pipeline segue com o valor mais próximo, marcado `ok=false`. Se a rede nova do `fedavg_iid` não passar de 0,90 na tarefa A nem em m=10, isso é registrado como resultado.
+c) **Rede nova** treinada em t mod 3 = 2 **e** em todas as 5 últimas tarefas da condição (0-based 25 a 29 com T=30; 7 a 11 com T=12). O gap é sempre pareado, tarefa a tarefa. Isso **substitui** o item 1 de "Escolhas operacionais" (2 referências por janela): a janela principal e a de H_part têm agora 5 referências. A calibração usa as mesmas tarefas do alvo.
+d) **L2 e SP só no regime de teste** (definido abaixo), com λ e calibração escolhidos na semente 1000, mesmas grades. Critério: maior acurácia contínua média nas tarefas 26 a 30 (0-based 25 a 29), entre os λ que respeitam o limite de esquecimento do Adendo 1. O limite só é medido em B_disjunta (nas tarefas A e B não há esquecimento medido); nesta tarefa ele exige rodar também `central_aprendizado` na semente 1000 como referência. Se nenhum λ respeitar o limite, escolhe-se o de menor esquecimento médio final e a escolha é marcada "violação".
+e) **Balanceamento das tarefas B e B_disjunta.** O gatilho (classe majoritária > 0,3 em mais de 20% das tarefas) disparou em todas as 14 combinações. O professor passa a rotular por argmax dos logits **centralizados**: de cada logit subtrai-se a média daquela classe sobre os pontos da tarefa (`logits − logits.mean(0)`). Muda a definição de professor do pré-registro original. Não se aplica à tarefa A. Cada CSV passa a ter a coluna `maj_frac` (fração da classe majoritária da tarefa), em todas as tarefas A, B e B_disjunta; as frações depois do balanceamento serão reportadas em `notes.md`.
+f) **Mantidos**: métricas, sonda de Lyle, matriz e métricas de esquecimento, B_disjunta, testes, controles e sementes.
+g) **Nomes de arquivo**: `results/<condicao>_m<m>_<tarefa>_<semente>.csv` (e `_matriz`, `_rodadas`, `.params.json` análogos), com coluna `nivel` (=m) no CSV. Os parâmetros gravados incluem m, R, S_local e uma versão dos dados (`versao_dados`), para a retomada do pipeline não aceitar CSVs do desenho antigo.
+
+### Regime de teste e hipóteses
+- **Regime de teste (m\*)**: o menor nível m ∈ {1, 3, 10} em que `central_aprendizado` tem gap ≤ −0,10 na tarefa A. O gap usado para essa decisão é o da métrica principal (média dos gaps pareados das 5 últimas tarefas) na semente 1000. Se nenhum nível chegar lá: registrar "regime sem perda; H_real, H_reg, H_part e H_orc não testáveis neste toy" e reportar só a figura de dose-resposta.
+- **H_real, H_reg, H_part e o critério de esquecimento passam a ser avaliados no nível m\***, com as mesmas regras de antes (agora com 5 referências por janela). Os demais níveis são reportados como dose-resposta (`fig_dose.png`), sem critério de decisão.
+- **Nova hipótese H_orc** (a vantagem do FedAvg sobre K=1 some quando os dois são comparados no mesmo nível de aprendizado da rede nova). **Critério**: no nível m\*, a média da métrica principal do `fedavg_iid` cai dentro do IC 95% da métrica principal de `central_aprendizado`, na tarefa A e na tarefa B (intervalos fechados; mesmo bootstrap). A comparação é com `central_aprendizado` porque ele é o controle calibrado para o mesmo nível de aprendizado da rede nova.
+- H_part continua com o texto original, no nível m\*. Dado (a), o critério (i) compara `media_sem_particao` (agora com o mesmo orçamento por cliente) com `central_aprendizado`; a leitura de H_part deve citar essa mudança.
+
+### Ordem de execução
+1. Teste curto (semente 1000, só tarefa A, m ∈ {1, 10}; `fedavg_iid`, `sem_media_k1`, `central_passos`): se em m=10 o `central_passos` não perder plasticidade (gap ≤ −0,10), parar e mostrar o log.
+2. Semente 1000: `fedavg_iid` por nível e tarefa, calibração de `central_aprendizado`, definição de m\*, seleção de λ (L2, SP) em m\*.
+3. Completo: sementes 1 a 5, tarefas A, B e B_disjunta, todos os níveis (L2 e SP só em m\*).
+4. Revisão do `auditor-metricas` antes de qualquer interpretação.
+
+### Previsão do autor
+(a preencher pelo autor, antes de qualquer execução do Passo 5)
