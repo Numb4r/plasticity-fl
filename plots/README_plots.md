@@ -3,7 +3,7 @@
 Rode da raiz do projeto (`--results` padrão `results`, `--saida` padrão `figures`):
 
     .venv/bin/python plots/fig_dose.py          # figures/fig_dose.png (FIGURA PRINCIPAL: dose-resposta por nível m)
-    .venv/bin/python plots/fig_k1_mecanismo.py  # figures/fig_k1_mecanismo.png (m=10: dormentes, norma, rank; K=1 vs fedavg_iid)
+    .venv/bin/python plots/fig_k1_mecanismo.py  # figures/fig_k1_mecanismo.png (m=10) e fig_k1_mecanismo_mstar.png (só se m* existir e != 10)
     .venv/bin/python plots/fig_gap.py           # figures/fig_gap.png      (nível m*)
     .venv/bin/python plots/fig_norma.py         # figures/fig_norma.png    (nível m*)
     .venv/bin/python plots/fig_sonda.py         # figures/fig_sonda.png    (nível m*)
@@ -42,3 +42,16 @@ Teste com CSVs sintéticos em `tempfile.mkdtemp()` (não toca em `results/`; `PL
   H_part tem 5 referências pareadas em todas as condições.
 
 Com 1 semente o IC é indefinido: as figuras mostram só a média e a tabela escreve "IC indefinido (n=1)".
+
+## fig_k1_mecanismo (Desvios v3.1, diagnósticos de Klein et al. 2026)
+- 4 condições (sem_media_k1, fedavg_iid, central_passos, central_aprendizado) x colunas A, B, B_disjunta; 14 linhas:
+  dormentes tau=0 e 0,025, norma, rank_ef (originais); norma dos pesos l1/l2/l3 (`fim_norma_l*_w`); norma L2 do
+  gradiente l1/l2/l3 (`ini_grad_l2_l*_w`); srank do gradiente (`ini_grad_srank`); maior autovalor da Hessiana no início
+  (`ini_hess_max`) e no fim (`fim_hess_max`); `acc_cont` na última linha, para comparar no tempo se norma/autovalor
+  sobem antes da queda da acurácia.
+- Rede nova: UMA linha cinza tracejada (marcador x) = média entre as 4 condições (por semente, depois bootstrap),
+  só nas tarefas com rede nova (`nova_ini_*` nas linhas de início, `nova_fim_*` nas de fim). Por condição ficava poluído.
+- Hessiana: marcador vazado = ao menos uma semente com `hess_conv == 0` naquele ponto (power iteration não convergiu).
+- Colunas novas ausentes (execuções antigas) ou todas NaN: o painel diz "sem diagnósticos"; o script não quebra.
+- m* nulo/ausente: só m=10, com aviso no título. Métricas diagnósticas: fora de regras de decisão e da tabela_decisao.md.
+- Custo: cerca de 30 s por figura (bootstrap de 10 000 reamostragens por ponto); test_fake.py leva ~8 min.

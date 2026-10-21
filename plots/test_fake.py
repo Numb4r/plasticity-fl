@@ -61,7 +61,34 @@ def gerar_calib(pasta, m_star, a_m10_acima=True, regime=True, calib_ok=True):
                     "esquecimento_ref": 0.10 if bd else None, "violacao": False})
 
 
-def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
+COLS_DIAG = ([f"norma_{c}_{t}" for c in ("l1", "l2", "l3") for t in "wb"] + ["norma_global"]
+             + [f"grad_{n}_{c}_{t}" for n in ("l2", "l1") for c in ("l1", "l2", "l3") for t in "wb"]
+             + ["grad_l2_global", "grad_l1_global", "grad_srank", "grad_cos_medio", "grad_cos_neg",
+                "hess_max", "hess_conv", "srank_feat"])
+
+
+def colunas_diag(d, tem, rng):
+    """Colunas novas (Desvios v3.1) sintéticas: ini_/fim_ no contínuo e nova_ini_/nova_fim_ onde há rede nova.
+    Norma e Hessiana sobem com a tarefa; hess_conv = 0 em parte dos pontos (marcador vazado)."""
+    T = len(d)
+    t = np.arange(T)
+    novas = {}
+    for pref, nova in (("ini_", False), ("fim_", False), ("nova_ini_", True), ("nova_fim_", True)):
+        for c in COLS_DIAG:
+            if c == "hess_conv":
+                v = (rng.random(T) > 0.3).astype(float)
+            elif c == "hess_max":
+                v = 5 + 0.5 * t + rng.normal(0, .2, T)
+            else:
+                v = 1 + 0.02 * t + rng.normal(0, .02, T)
+            if nova:
+                v = np.where(tem, v * 0.7, np.nan)
+            novas[pref + c] = v
+    novas["srank_feat"] = 40.0
+    return pd.concat([d, pd.DataFrame(novas, index=d.index)], axis=1)
+
+
+def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS, diag=True):
     """gap[(cond, tipo)] = gap no nível m* (número ou função de t), padrão 0,05; fora de m* soma FORA.
     esq[cond] = esquecimento final em B_disjunta em m* (padrão 0,10); em t < T-1 vale nível + 0,3.
     L2 e SP só existem em m*. Com m_star None, o nível 'central' dos gaps é 3 e L2/SP não existem."""
@@ -89,6 +116,8 @@ def gerar(pasta, m_star, sementes, tipos, gap, esq, rng, niveis=analise.NIVEIS):
                         rank_ef=50.0, cos_medio=0.3, acc_nova=acc_nova, gap=g,
                         sonda_perda_copia=1.0, sonda_perda_nova=1.0,
                         sonda_razao=np.where(t % 5 == 4, 1 + 0.02 * t + rng.normal(0, .02, T), np.nan)))
+                    if diag and s in analise.SEMENTES_AVALIACAO:
+                        d = colunas_diag(d, tem, rng)
                     base = os.path.join(pasta, f"{cond}_m{m}_{tipo}_{s}")
                     if tipo == analise.TIPO_BD:
                         ne = esq.get(cond, 0.10) + (0.0 if m == ref else FORA)
@@ -381,7 +410,57 @@ def main():
                 assert "sem resultados em" in pr.stderr and "Traceback" not in pr.stderr, (nome, sc, pr.stderr)
                 assert not os.path.exists(saida), (nome, sc)     # nenhuma figura nem pasta vazia
         assert analise.bootstrap_ic([1, 2, 3, 4]) == analise.bootstrap_ic([1, 2, 3, 4])
-        print("OK: 7 arquivos gerados (fig_dose e fig_k1_mecanismo inclusos) e vereditos conferidos")
+
+        # ---- 10: fig_k1_mecanismo com diagnósticos: m*=3 gera as duas figuras; m*=10 e m* nulo só a de m=10
+        import matplotlib.pyplot as plt
+        import fig_k1_mecanismo as fk
+        s_orc = os.path.join(base, "saida_orc_falso")
+        assert os.path.getsize(os.path.join(s_orc, "fig_k1_mecanismo_mstar.png")) > 0
+        d10 = analise.carregar(os.path.join(base, "orc_falso"))
+        assert "ini_hess_max" in d10.columns and "nova_fim_hess_max" in d10.columns
+        assert fk.nao_convergiu(d10, "fedavg_iid", "A", 10, "ini_hess_max")   # hess_conv=0 detectado
+        cn = fk.curva_nova(d10, "nova_ini_grad_srank", "A", 10)
+        assert set(cn["tarefa"]) == {t for t in range(30) if t % 3 == 2 or t >= 25 or 7 <= t <= 11}
+        assert d10[d10["tarefa"] == 0]["nova_ini_hess_max"].isna().all()
+        for nome, ms, esperado in (("k1_m10", 10, False), ("k1_nulo", None, False)):
+            pk = os.path.join(base, nome)
+            gerar(pk, ms, SEMENTES, TP, {}, {}, rng)
+            gerar_calib(pk, ms)
+            sk = os.path.join(base, "saida_" + nome)
+            pr = subprocess.run([sys.executable, "plots/fig_k1_mecanismo.py", "--results", pk, "--saida", sk],
+                                cwd=RAIZ, capture_output=True, text=True)
+            assert pr.returncode == 0, pr.stderr
+            assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo.png")) > 0
+            assert not os.path.exists(os.path.join(sk, "fig_k1_mecanismo_mstar.png")), nome
+        # execução antiga: sem as colunas novas, não quebra e as linhas dizem "sem diagnósticos"
+        pk = os.path.join(base, "k1_antigo")
+        gerar(pk, 3, SEMENTES, TP, {}, {}, rng, diag=False)
+        gerar_calib(pk, 3)
+        d_ant = analise.carregar(pk)
+        assert "ini_hess_max" not in d_ant.columns
+        sk = os.path.join(base, "saida_k1_antigo")
+        pr = subprocess.run([sys.executable, "plots/fig_k1_mecanismo.py", "--results", pk, "--saida", sk],
+                            cwd=RAIZ, capture_output=True, text=True)
+        assert pr.returncode == 0 and "Traceback" not in pr.stderr, pr.stderr
+        assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo.png")) > 0
+        assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo_mstar.png")) > 0
+        textos = []
+        orig = fk.painel
+        def espiao(ax, *a, **k):
+            orig(ax, *a, **k)
+            textos.extend(t.get_text() for t in ax.texts)
+        fk.painel = espiao
+        fk.figura(d_ant, 10, "", sk, "x.png")
+        fk.painel = orig
+        assert textos.count(fk.SEM_DIAG) == 3 * (len(fk.DIAG) - 1) and "sem dados" not in textos, textos
+        # com diagnósticos nenhum painel diz "sem diagnósticos"
+        textos.clear()
+        fk.painel = espiao
+        fk.figura(d10, 10, "", sk, "x.png")
+        fk.painel = orig
+        assert fk.SEM_DIAG not in textos, textos
+        plt.close("all")
+        print("OK: 7 arquivos gerados (fig_dose e fig_k1_mecanismo inclusos), fig_k1 com/sem diagnósticos e vereditos conferidos")
     finally:
         if os.environ.get("PLAST_TEST_KEEP"):
             print("mantido:", base)
