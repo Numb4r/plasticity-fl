@@ -44,14 +44,29 @@ Teste com CSVs sintéticos em `tempfile.mkdtemp()` (não toca em `results/`; `PL
 Com 1 semente o IC é indefinido: as figuras mostram só a média e a tabela escreve "IC indefinido (n=1)".
 
 ## fig_k1_mecanismo (Desvios v3.1, diagnósticos de Klein et al. 2026)
-- 4 condições (sem_media_k1, fedavg_iid, central_passos, central_aprendizado) x colunas A, B, B_disjunta; 14 linhas:
+- 4 condições (sem_media_k1, fedavg_iid, central_passos, central_aprendizado) x colunas A, B, B_disjunta; 14 linhas (+ a figura por semente abaixo):
   dormentes tau=0 e 0,025, norma, rank_ef (originais); norma dos pesos l1/l2/l3 (`fim_norma_l*_w`); norma L2 do
   gradiente l1/l2/l3 (`ini_grad_l2_l*_w`); srank do gradiente (`ini_grad_srank`); maior autovalor da Hessiana no início
   (`ini_hess_max`) e no fim (`fim_hess_max`); `acc_cont` na última linha, para comparar no tempo se norma/autovalor
   sobem antes da queda da acurácia.
-- Rede nova: UMA linha cinza tracejada (marcador x) = média entre as 4 condições (por semente, depois bootstrap),
-  só nas tarefas com rede nova (`nova_ini_*` nas linhas de início, `nova_fim_*` nas de fim). Por condição ficava poluído.
-- Hessiana: marcador vazado = ao menos uma semente com `hess_conv == 0` naquele ponto (power iteration não convergiu).
+- Rede nova, regra de desenho (escolha também escrita na legenda da figura):
+  - linhas de INÍCIO (`nova_ini_*`): a rede nova é idêntica nas 4 condições (mesma semente de init_nova, sem SP em
+    nenhuma) -> UMA linha cinza tracejada (marcador x) = média entre as 4 condições (por semente, depois bootstrap);
+  - linhas de FIM (`nova_fim_*`: norma por camada, Hessiana no fim) e `acc_cont` (referência `acc_nova`): a rede nova é
+    treinada com o protocolo da própria condição -> uma linha fina tracejada POR CONDIÇÃO (cor e marcador da condição,
+    média e valores daquela condição, sem faixa de IC).
+  Só nas tarefas com rede nova (`tarefas_com_nova`).
+- Hessiana: marcador vazado = ao menos uma semente com `hess_conv == 0` naquele ponto (power iteration não convergiu);
+  vale para o contínuo, para a linha da rede nova por condição (`nova_fim_hess_conv`) e para a cinza (`nova_ini_hess_conv`
+  de qualquer condição). A entrada de legenda só aparece se houver ponto não convergido.
+- `hess_max` é o autovalor de maior módulo COM SINAL: a média entre sementes pode ficar perto de 0 se o sinal muda.
+- Norma dos parâmetros por camada: só pesos (os vieses estão nos CSVs: `norma_l*_b`).
+- Tempo de medição: `ini_*` na tarefa t é medido ANTES de treinar t (estado após t-1 e após o shrink-and-perturb);
+  `fim_*` e `acc_cont`, DEPOIS.
+- `figures/fig_k1_por_semente.png` (e `_mstar.png`, mesma regra de níveis e de aviso): linhas fina por semente (sem média,
+  sem IC), por condição (4) e tarefa (3), em trios de linhas `fim_hess_max`, `fim_norma_l2_w`, `acc_cont`, para ver semente
+  a semente se norma/Hessiana sobem antes da queda da acurácia. Mesma regra de dados ausentes ("sem diagnósticos" em
+  hess/norma; "sem dados" em acc_cont). Linha y=0 nas linhas da Hessiana; marcador vazado = `hess_conv == 0`.
 - Colunas novas ausentes (execuções antigas) ou todas NaN: o painel diz "sem diagnósticos"; o script não quebra.
 - m* nulo/ausente: só m=10, com aviso no título. Métricas diagnósticas: fora de regras de decisão e da tabela_decisao.md.
 - Custo: cerca de 30 s por figura (bootstrap de 10 000 reamostragens por ponto); test_fake.py leva ~8 min.

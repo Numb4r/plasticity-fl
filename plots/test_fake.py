@@ -61,10 +61,30 @@ def gerar_calib(pasta, m_star, a_m10_acima=True, regime=True, calib_ok=True):
                     "esquecimento_ref": 0.10 if bd else None, "violacao": False})
 
 
+# Espelha src/diagnosticos.py::chaves (CAMADAS = l1,l2,l3); os prefixos ini_/fim_/nova_ini_/nova_fim_ vêm de src/condicoes.py.
+# test_conferir_esquema() lê o texto desses dois arquivos (sem importar torch) e confere os nomes.
 COLS_DIAG = ([f"norma_{c}_{t}" for c in ("l1", "l2", "l3") for t in "wb"] + ["norma_global"]
              + [f"grad_{n}_{c}_{t}" for n in ("l2", "l1") for c in ("l1", "l2", "l3") for t in "wb"]
              + ["grad_l2_global", "grad_l1_global", "grad_srank", "grad_cos_medio", "grad_cos_neg",
                 "hess_max", "hess_conv", "srank_feat"])
+PREFIXOS_DIAG = ("ini_", "fim_", "nova_ini_", "nova_fim_")
+
+
+def conferir_esquema():
+    """Os nomes de COLS_DIAG e dos prefixos existem em src/diagnosticos.py e src/condicoes.py."""
+    with open(os.path.join(RAIZ, "src", "diagnosticos.py"), encoding="utf-8") as f:
+        diag = f.read()
+    with open(os.path.join(RAIZ, "src", "condicoes.py"), encoding="utf-8") as f:
+        cond = f.read()
+    assert 'CAMADAS = ("l1", "l2", "l3")' in diag
+    for trecho in ('f"norma_{c}_{t}" for c in CAMADAS for t in "wb"', '"norma_global"',
+                   'f"grad_{n}_{c}_{t}" for n in ("l2", "l1") for c in CAMADAS for t in "wb"',
+                   '"grad_l2_global", "grad_l1_global", "grad_srank", "grad_cos_medio", "grad_cos_neg"',
+                   '"hess_max", "hess_conv", "srank_feat"'):
+        assert trecho in diag, trecho
+    for pref in PREFIXOS_DIAG:
+        assert f'"{pref}"' in cond, pref
+    assert len(COLS_DIAG) == 6 + 1 + 12 + 5 + 3
 
 
 def colunas_diag(d, tem, rng):
@@ -73,12 +93,13 @@ def colunas_diag(d, tem, rng):
     T = len(d)
     t = np.arange(T)
     novas = {}
-    for pref, nova in (("ini_", False), ("fim_", False), ("nova_ini_", True), ("nova_fim_", True)):
+    for pref, nova in zip(PREFIXOS_DIAG, (False, False, True, True)):
         for c in COLS_DIAG:
             if c == "hess_conv":
                 v = (rng.random(T) > 0.3).astype(float)
             elif c == "hess_max":
                 v = 5 + 0.5 * t + rng.normal(0, .2, T)
+                v = np.where((t == 4) | (t == 13), -2.0 - 0.1 * t, v)   # autovalor de maior módulo pode ser negativo
             else:
                 v = 1 + 0.02 * t + rng.normal(0, .02, T)
             if nova:
@@ -422,6 +443,10 @@ def main():
         cn = fk.curva_nova(d10, "nova_ini_grad_srank", "A", 10)
         assert set(cn["tarefa"]) == {t for t in range(30) if t % 3 == 2 or t >= 25 or 7 <= t <= 11}
         assert d10[d10["tarefa"] == 0]["nova_ini_hess_max"].isna().all()
+        conferir_esquema()
+        assert (d10["fim_hess_max"] < 0).any() and (d10["ini_hess_max"] < 0).any()
+        for nome_k in ("fig_k1_por_semente.png", "fig_k1_por_semente_mstar.png"):
+            assert os.path.getsize(os.path.join(s_orc, nome_k)) > 0, nome_k
         for nome, ms, esperado in (("k1_m10", 10, False), ("k1_nulo", None, False)):
             pk = os.path.join(base, nome)
             gerar(pk, ms, SEMENTES, TP, {}, {}, rng)
@@ -432,6 +457,8 @@ def main():
             assert pr.returncode == 0, pr.stderr
             assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo.png")) > 0
             assert not os.path.exists(os.path.join(sk, "fig_k1_mecanismo_mstar.png")), nome
+            assert os.path.getsize(os.path.join(sk, "fig_k1_por_semente.png")) > 0
+            assert not os.path.exists(os.path.join(sk, "fig_k1_por_semente_mstar.png")), nome
         # execução antiga: sem as colunas novas, não quebra e as linhas dizem "sem diagnósticos"
         pk = os.path.join(base, "k1_antigo")
         gerar(pk, 3, SEMENTES, TP, {}, {}, rng, diag=False)
@@ -444,6 +471,8 @@ def main():
         assert pr.returncode == 0 and "Traceback" not in pr.stderr, pr.stderr
         assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo.png")) > 0
         assert os.path.getsize(os.path.join(sk, "fig_k1_mecanismo_mstar.png")) > 0
+        assert os.path.getsize(os.path.join(sk, "fig_k1_por_semente.png")) > 0
+        assert os.path.getsize(os.path.join(sk, "fig_k1_por_semente_mstar.png")) > 0
         textos = []
         orig = fk.painel
         def espiao(ax, *a, **k):
@@ -453,12 +482,74 @@ def main():
         fk.figura(d_ant, 10, "", sk, "x.png")
         fk.painel = orig
         assert textos.count(fk.SEM_DIAG) == 3 * (len(fk.DIAG) - 1) and "sem dados" not in textos, textos
-        # com diagnósticos nenhum painel diz "sem diagnósticos"
+        # por semente, execução antiga: hess e norma dizem "sem diagnósticos" (2 linhas x 4 condições x 3 tarefas)
         textos.clear()
-        fk.painel = espiao
+        origs = fk.painel_semente
+        def espiao_s(ax, *a, **k):
+            r = origs(ax, *a, **k)
+            textos.extend(t.get_text() for t in ax.texts)
+            return r
+        fk.painel_semente = espiao_s
+        fk.figura_semente(d_ant, 10, "", sk, "x.png")
+        fk.painel_semente = origs
+        assert textos.count(fk.SEM_DIAG) == 2 * 4 * 3 and "sem dados" not in textos, textos
+        # com diagnósticos nenhum painel diz "sem diagnósticos"; o marcador vazado é DESENHADO (não só detectado)
+        textos.clear()
+        chamadas, retornos, legendas = [], [], []
+        orig_vaz, orig_leg = fk._vazado, fk.legenda_fig
+        def espiao_vaz(ax, pts, marker, cor, tam=8):
+            chamadas.append((len(pts), cor, tam))
+            n0 = len(ax.lines)
+            orig_vaz(ax, pts, marker, cor, tam)
+            ln = ax.lines[-1]
+            assert len(ax.lines) == n0 + 1 and ln.get_markerfacecolor() == "white" and ln.get_markeredgecolor() == cor
+            assert len(ln.get_xdata()) == len(pts) > 0
+        def espiao_painel(ax, *a, **k):
+            retornos.append(orig(ax, *a, **k))
+            textos.extend(t.get_text() for t in ax.texts)
+            return retornos[-1]
+        def espiao_leg(fig, *a, **k):
+            legendas.append(a)
+            return orig_leg(fig, *a, **k)
+        fk._vazado, fk.painel, fk.legenda_fig = espiao_vaz, espiao_painel, espiao_leg
         fk.figura(d10, 10, "", sk, "x.png")
-        fk.painel = orig
+        fk._vazado, fk.painel, fk.legenda_fig = orig_vaz, orig, orig_leg
         assert fk.SEM_DIAG not in textos, textos
+        assert chamadas and any(c[2] == 8 for c in chamadas) and any(c[2] == 6 for c in chamadas), chamadas   # contínuo e nova
+        assert any(retornos) and legendas[0][2] is True      # entrada de legenda só porque há ponto não convergido
+        # cinza (início): marcador vazado cinza também desenhado
+        assert any(c[1] == fk.CINZA for c in chamadas)
+        # sem nenhum hess_conv == 0 não há marcador vazado nem entrada na legenda
+        d_ok = d10.copy()
+        for c in [c for c in d_ok.columns if c.endswith("hess_conv")]:
+            d_ok[c] = 1.0
+        chamadas.clear(); retornos.clear(); legendas.clear()
+        fk._vazado, fk.painel, fk.legenda_fig = espiao_vaz, espiao_painel, espiao_leg
+        fk.figura(d_ok, 10, "", sk, "x.png")
+        fk._vazado, fk.painel, fk.legenda_fig = orig_vaz, orig, orig_leg
+        assert not chamadas and not any(retornos) and legendas[0][2] is False, (chamadas, legendas)
+        # por semente: marcador vazado desenhado, 1 linha fina por semente (5) num painel de acc_cont
+        fk.figura_semente(d10, 10, "", sk, "x.png")
+        fig_t, ax_t = plt.subplots()
+        assert fk.painel_semente(ax_t, d10, "fedavg_iid", "A", 10, "fim_hess_max", True, True) is True
+        assert len([l for l in ax_t.lines if l.get_linewidth() == 0.7]) == 5
+        assert any(l.get_markerfacecolor() == "white" for l in ax_t.lines)
+        assert min(min(l.get_ydata()) for l in ax_t.lines if l.get_linewidth() == 0.7) < 0   # hess negativo plotado
+        fig_t, ax_t = plt.subplots()
+        assert fk.painel_semente(ax_t, d10, "fedavg_iid", "A", 10, "acc_cont", False, False) is False
+        assert len(ax_t.lines) == 5
+        # linhas de fim: rede nova POR CONDIÇÃO (4 tracejadas finas); início: UMA cinza
+        fig_t, ax_t = plt.subplots()
+        fk.painel(ax_t, d10, "A", 10, "fim_norma_l2_w", "nova_fim_norma_l2_w", False, True)
+        assert len([l for l in ax_t.lines if l.get_linewidth() == 0.9]) == 4
+        assert not [l for l in ax_t.lines if l.get_color() == fk.CINZA]
+        fig_t, ax_t = plt.subplots()
+        fk.painel(ax_t, d10, "A", 10, "ini_hess_max", "nova_ini_hess_max", True, True)
+        assert len([l for l in ax_t.lines if l.get_color() == fk.CINZA and l.get_linewidth() == 1.3]) == 1
+        assert not [l for l in ax_t.lines if l.get_linewidth() == 0.9]
+        fig_t, ax_t = plt.subplots()
+        fk.painel(ax_t, d10, "A", 10, "acc_cont", "acc_nova", False, False)
+        assert len([l for l in ax_t.lines if l.get_linewidth() == 0.9]) == 4
         plt.close("all")
         print("OK: 7 arquivos gerados (fig_dose e fig_k1_mecanismo inclusos), fig_k1 com/sem diagnósticos e vereditos conferidos")
     finally:
