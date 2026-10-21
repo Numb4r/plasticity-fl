@@ -19,3 +19,6 @@ Seleção: L2 lambda=1e-4 (A e B_disjunta); SP lambda=0,8 (A e B_disjunta). (Val
 ## 2026-10-21 · Completo: pressão de memória do sistema
 Às 09:17:36 o OOM-killer do kernel matou o `claude-desktop` (memória global esgotada, ~2,5 GB livres durante a noite). O pipeline (4 processos, ~0,3 GB cada, ~1,3 GB no total) continuou vivo. Sinais de pausas longas: execuções de `central_passos` m=3 com tempo de parede de ~5400 s na tarefa 16 contra ~70 s nas vizinhas, compatíveis com o computador congelado ou em swap durante a noite; não investigado. O pipeline é retomável: se um processo for morto, basta relançar o mesmo comando (CSVs válidos são pulados).
 Progresso às 09:18: 165/255 CSVs de avaliação; regime m*=3 definido em results/calibracao/regime.json (gap de central_aprendizado na tarefa A, semente 1000: m=1 +0,102; m=3 −0,351; m=10 −0,785).
+
+## 2026-10-21 · Fração da classe majoritária depois do balanceamento (Desvios v3, item e)
+Média e máximo por tarefa, sementes 1 a 5 (valores dos CSVs de avaliação): A 0,116 / 0,134; B 0,140 / 0,183; B_disjunta 0,144 / 0,196. Nenhuma tarefa acima de 0,3 (antes do balanceamento: acima de 0,3 em 83% a 97% das tarefas). Tarefas com 1 ou 2 classes: nenhuma.
