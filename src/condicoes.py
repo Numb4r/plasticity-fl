@@ -108,6 +108,9 @@ def csv_valido(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "
         return False
     if json.loads(params.read_text()) != json.loads(json.dumps(asdict(cond))):
         return False
+    colunas = pd.read_csv(csv, nrows=0).columns
+    if sem != SEMENTE_CALIB and "fim_hess_max" not in colunas:    # CSV de antes do v3.1: refazer
+        return False
     return len(pd.read_csv(csv)) == cond.T
 
 

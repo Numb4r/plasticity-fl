@@ -113,12 +113,12 @@ Uma linha por nome, em português simples, sem fórmulas. Os nomes são os que a
 - **Pontos fixos do espectro** — os 64 pontos são sorteados uma vez por semente e tarefa e são os mesmos em todas as condições, momentos e redes.
 - **`grad_srank`** — quantas direções independentes os gradientes dos 64 pontos realmente usam; valor baixo indica gradientes redundantes.
 - **srank** — o menor número de direções que juntas explicam quase tudo (99%) de uma matriz.
-- **`srank_feat`** — o mesmo srank, mas das ativações da última camada oculta (as "features"); fica ao lado do `rank_ef`, que usa outra definição.
+- **`srank_feat`** — o mesmo srank, mas das ativações da última camada oculta (as "features"); fica ao lado do `rank_ef`, que usa outra definição. É numericamente igual a `fim_srank_feat` (a mesma conta, repetida nos diagnósticos); só `srank_feat` existe também na semente 1000.
 - **`grad_cos_medio`** — o quanto, em média, os gradientes de pontos diferentes apontam para o mesmo lado.
 - **`grad_cos_neg`** — a fração de pares de pontos cujos gradientes puxam em sentidos opostos.
 - **Hessiana** — a "curvatura" da perda: diz o quão rápido o erro muda quando se mexe nos pesos.
-- **`hess_max`** — o maior valor de curvatura; se for muito alto, passos pequenos já desestabilizam o treino.
-- **`hess_conv`** — 1 se a estimativa de `hess_max` estabilizou (variação menor que 1% nas últimas 5 iterações), 0 se não.
+- **`hess_max`** — o autovalor da curvatura de maior módulo, **com sinal** (pode sair negativo numa rede com ReLU). Valor alto de curvatura positiva indica que passos pequenos já desestabilizam o treino.
+- **`hess_conv`** — 1 se a estimativa de `hess_max` estabilizou (variação menor que 1% nas últimas 5 iterações), 0 se não. Estabilizar não garante estar exata: o critério aceita estimativas ainda a ~0,5% do valor verdadeiro.
 - **Power iteration** — método iterativo que acha o maior valor de curvatura sem montar a matriz inteira (30 iterações).
 - **Produto Hessiana-vetor** — a conta que a power iteration repete a cada passo, feita com diferenciação automática dupla.
 - **`torch.func.vmap`** — ferramenta que calcula os gradientes dos 64 pontos de uma vez, em vez de um por um.

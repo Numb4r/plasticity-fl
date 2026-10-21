@@ -83,6 +83,9 @@ def autovalor_max(perda_fn, params: list[torch.Tensor], gen: torch.Generator,
     v = ([torch.randn(p.shape, generator=gen).to(dev) for p in params] if v_ini is None
          else [x.clone() for x in v_ini])
     norma = math.sqrt(sum((x ** 2).sum().item() for x in v))
+    if norma == 0.0:                       # partida inválida: sorteia de novo com o gerador próprio
+        v = [torch.randn(p.shape, generator=gen).to(dev) for p in params]
+        norma = math.sqrt(sum((x ** 2).sum().item() for x in v))
     v = [x / norma for x in v]
     lams = []
     for _ in range(iters):

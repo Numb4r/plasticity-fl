@@ -147,3 +147,69 @@ def test_pontos_do_espectro_sao_os_mesmos_em_todas_as_medicoes():
     assert math.isclose(a["ini_grad_srank"], b["x_grad_srank"]) and math.isclose(a["ini_grad_cos_medio"], b["x_grad_cos_medio"], rel_tol=1e-6)
     c, _ = dg.medir(criar_mlp(1), X, y, 1, 1, 0, 0, "ini_")        # outra tarefa: índices diferentes
     assert not math.isclose(a["ini_grad_cos_medio"], c["ini_grad_cos_medio"], rel_tol=1e-9)
+
+
+# ---------- reforços apontados pela auditoria do v3.1 ----------
+
+def _quadratica(diag, iters, seed=1):
+    w = torch.zeros(len(diag), requires_grad=True)
+    d = torch.tensor(diag)
+    return dg.autovalor_max(lambda: 0.5 * (d * w * w).sum(), [w], torch.Generator().manual_seed(seed), iters, 0.01)[:2]
+
+
+def test_autovalor_dominante_negativo_sai_com_sinal():
+    lam, conv = _quadratica([-3.0, 1.0], 30)
+    assert abs(lam + 3.0) < 0.03 and conv                     # hess_max pode ser negativo (maior módulo)
+
+
+def test_hess_conv_e_zero_quando_nao_estabilizou():
+    lam, conv = _quadratica([1.0, 0.5], 7, seed=1)            # poucas iterações, partida desfavorável
+    assert not conv
+    lam, conv = _quadratica([1.0, 0.5], 30, seed=1)
+    assert conv and abs(lam - 1.0) < 0.01
+
+
+def test_v_ini_de_norma_zero_nao_quebra():
+    w = torch.zeros(3, requires_grad=True)
+    lam, conv, v = dg.autovalor_max(lambda: 0.5 * (torch.tensor([2.0, 1.0, 0.5]) * w * w).sum(), [w],
+                                    torch.Generator().manual_seed(0), 30, 0.01, v_ini=[torch.zeros(3)])
+    assert abs(lam - 2.0) < 0.02 and conv and abs(sum(x.norm() ** 2 for x in v).item() - 1) < 1e-5
+
+
+def test_semente_de_calibracao_sai_sem_diagnosticos_mas_com_srank_feat(tmp_path):
+    cond = replace(cs.condicao_base("central_passos"), T=2, passos=15)
+    df = cs.executar(cond, "A", config.SEMENTE_CALIB, tmp_path / "calibracao")
+    assert "srank_feat" in df.columns and "fim_hess_max" not in df.columns
+    df = cs.executar(cond, "A", 1, tmp_path)
+    assert "fim_hess_max" in df.columns and "nova_ini_hess_max" in df.columns
+
+
+def test_ordem_das_medicoes_inicio_fim_e_redes_novas(tmp_path):
+    sem_sp = replace(cs.condicao_base("central_passos"), T=8, passos=15)
+    com_sp = replace(sem_sp, nome="central_SP", sp_lambda=0.8)
+    a = cs.executar(sem_sp, "A", 1, tmp_path / "a")
+    b = cs.executar(com_sp, "A", 1, tmp_path / "b")
+    # sem SP o início da tarefa t é exatamente o fim da tarefa t-1; com SP o início vem DEPOIS do SP
+    assert ((a["ini_norma_global"].iloc[1:].values - a["fim_norma_global"].iloc[:-1].values) ** 2 < 1e-9).all()
+    assert (b["ini_norma_global"].iloc[1:].values < 0.9 * b["fim_norma_global"].iloc[:-1].values + 0.5).all()
+    assert (b["ini_norma_global"].iloc[1:].values != b["fim_norma_global"].iloc[:-1].values).all()
+    com_nova = set(config.tarefas_com_nova(8))
+    for t in range(8):                                      # colunas nova_* só onde há rede nova
+        assert a.loc[t, "nova_ini_hess_max"] == a.loc[t, "nova_ini_hess_max"] if t in com_nova else math.isnan(a.loc[t, "nova_ini_hess_max"])
+        assert (not math.isnan(a.loc[t, "nova_fim_norma_global"])) == (t in com_nova)
+
+
+def test_csv_valido_exige_diagnosticos_nas_sementes_de_avaliacao(tmp_path):
+    cond = replace(cs.condicao_base("central_passos"), T=2, passos=15)
+    cs.executar(cond, "A", 1, tmp_path, diagnosticos=False)         # como um CSV de antes do v3.1
+    assert not cs.csv_valido(cond, "A", 1, tmp_path)
+    cs.executar(cond, "A", 1, tmp_path, diagnosticos=True)
+    assert cs.csv_valido(cond, "A", 1, tmp_path)
+    cs.executar(cond, "A", config.SEMENTE_CALIB, tmp_path / "calibracao")   # a 1000 nunca tem diagnósticos
+    assert cs.csv_valido(cond, "A", config.SEMENTE_CALIB, tmp_path / "calibracao")
+
+
+def test_srank_feat_usa_o_mesmo_delta_e_e_igual_a_fim_srank_feat(tmp_path):
+    df = cs.executar(replace(cs.condicao_base("central_passos"), T=2, passos=15), "A", 1, tmp_path)
+    assert (df["srank_feat"] == df["fim_srank_feat"]).all()          # mesma conta: documentado no glossário
+    assert config.SRANK_DELTA == 0.01

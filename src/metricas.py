@@ -3,6 +3,8 @@ import math
 
 import torch
 
+from src.config import SRANK_DELTA
+
 from src.modelo import MLP
 
 
@@ -80,5 +82,5 @@ def metricas_modelo(modelo: MLP, X: torch.Tensor, taus: tuple[float, ...]) -> di
         out[f"dorm_tau{nome}_l1"] = fracao_dormentes(h1, tau)
         out[f"dorm_tau{nome}_l2"] = fracao_dormentes(h2, tau)
     out["rank_ef"] = rank_efetivo(h2)
-    out["srank_feat"] = srank(h2, 0.01)     # Desvios v3.1; o rank_ef acima não muda
+    out["srank_feat"] = srank(h2, SRANK_DELTA)     # Desvios v3.1; o rank_ef acima não muda
     return out
