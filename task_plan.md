@@ -23,15 +23,7 @@ Responder, até quinta-feira, se a vantagem do FedAvg em preservar plasticidade 
 - auditor-metricas/executor/gerador não carregam como subagent_type na sessão em que foram criados: reiniciar a sessão ou usar general-purpose com o corpo do agente.
 - Python do sistema é 3.10; criado .venv com 3.11 (uv) e torch CPU 2.14.1.
 
-## Status
-Passo 5 PARADO: aguardando o usuário preencher "Previsão do autor" no PREREGISTRO.md (auditoria 4: sem P0/P1 no código). Passo 4 (figuras) com o gerador em andamento.
-
-## Fila (ordem fixada pelo autor)
-1. Revisão final curta (auditor) em andamento.
-2. Autor preenche "Previsão do autor" -> commit SÓ da previsão -> anotar o hash no PREREGISTRO -> lançar teste_curto.
-   Se central_passos m=10 não tiver gap <= -0,10: PARAR e mostrar o log.
-3. Depois do teste_curto, ANTES do completo: Adendo v3.1 (métricas de Klein et al. 2026), nesta ordem:
-   a) PREREGISTRO.md > Desvios (data de hoje) antes de mexer no código; métricas diagnósticas, fora dos critérios e da tabela_decisao;
-   b) métricas em src/ (norma por camada, grad L1/L2 por camada, espectro do gradiente com 64 pontos, autovalor máx. da Hessiana por power iteration);
-   c) 4 testes novos; d) medir custo em fedavg_iid m=1 (se >10%: 20 iterações e AVISAR antes de mudar qualquer outra coisa);
-   e) fig_k1_mecanismo ampliada (gerador); f) revisão do auditor; g) só então o completo.
+## Status (2026-10-21)
+Concluído: pré-registro + Desvios v3, v3.1 e leituras pós-resultado; código com 61 testes; completo (255 execuções, 643 min); figuras reais e tabela_decisao.md; auditoria dos resultados (sem P0; quatro decisões prontas para interpretar; esquecimento e sonda NÃO); análise exploratória de Klein; README e GLOSSARIO.
+Resultado pré-registrado: nenhum critério atendido (H_reg, H_part, H_real, H_orc) no nível m*=3.
+Pendente (opcional): cronometrar o --quick com o código final; reabrir fig_k1_mecanismo (m=10) e fig_k1_por_semente_mstar depois dos ajustes de layout; sobreposição dos rótulos em fig_dose; considerar um segundo eixo de esquecimento que não sature (ex.: retenção relativa) como trabalho futuro.
