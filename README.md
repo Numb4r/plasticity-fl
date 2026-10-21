@@ -1,5 +1,7 @@
 # Plasticidade: FedAvg contra treino centralizado
 
+> **Rodada 1 fechada:** tag git `rodada1-final` (código, dados, pré-registro e figuras exatamente como na rodada 1). A rodada 2 está pré-registrada em `PREREGISTRO.md`.
+
 > **Dúvida sobre algum nome?** Veja o [GLOSSARIO.md](GLOSSARIO.md): uma linha em português simples para cada condição, variável, coluna, hipótese e figura.
 
 Um experimento pequeno e pré-registrado para responder: **a vantagem do FedAvg sobre o treino centralizado em preservar plasticidade sobrevive a controles de passos, de partição dos dados e de regularização?**
@@ -90,8 +92,9 @@ for s in fig_gap fig_norma fig_sonda fig_tradeoff fig_dose fig_k1_mecanismo tabe
 | teste curto (6 execuções, semente 1000, tarefa A, m = 1 e 10, 3 processos) | CPU, 12 núcleos | 1062 s (17,7 min); a execução de `fedavg_iid` em m=10 levou ~1019 s |
 | `fedavg_iid`, m=1, T=30, sem diagnósticos / com diagnósticos | 2 processos em paralelo | 163 s / 202 s (+23,6%) |
 | **completo** (255 execuções + calibração + seleção, 3 processos) | idem | **38 593 s = 643 min = 10,7 h** (calibração 73 min; sementes 1 a 5: 570 min) |
+| **`--quick`** (semente 1, tarefa A, sem `media_sem_particao`, 3 processos, pasta de saída nova, código final) | idem | **3134 s = 52 min** (`fedavg_iid` da semente 1000 em m=1, 3 e 10: 18 min; calibração: 4,4 min; regime: 1,8 min; seleção de λ: 2,9 min; 14 execuções de avaliação: 24,8 min); pico de memória 321 MB |
 
-O completo levou ~1,8× o tempo projetado (~6 h): as medições por execução incluem pausas do computador durante a noite e uma falta de memória do sistema. O `--quick` **não** foi cronometrado com o código final; a demo rápida inclui a calibração em m=10 (a parte mais lenta), então conte com cerca de 1 h. O tempo equivalente sem diagnósticos do completo não foi medido; a projeção do acréscimo dos diagnósticos foi de +7% a +16% (`results/custo_diagnosticos.json`).
+O completo levou ~1,8× o tempo projetado (~6 h): as medições por execução incluem pausas do computador durante a noite e uma falta de memória do sistema. **O `--quick` foi cronometrado com o código final (52 min, saída 0, sem erros) e reproduz exatamente a rodada 1: os 14 CSVs da semente 1 saem idênticos aos de `results/` e a calibração dá os mesmos passos.** O tempo equivalente sem diagnósticos do completo não foi medido; a projeção do acréscimo dos diagnósticos foi de +7% a +16% (`results/custo_diagnosticos.json`).
 
 ## Figuras (`figures/`)
 

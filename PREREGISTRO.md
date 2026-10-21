@@ -275,3 +275,8 @@ O modo rápido do desenho antigo foi regenerado com o código do commit `0b1c019
 
 ### 2026-10-21 · Exploratório da rodada 1: rank efetivo e norma por tarefa (definição escrita antes de calcular)
 Pedido do autor para o painel. **Descritivo, exploratório, sem critério de decisão, feito depois de ver os resultados; não altera nenhum veredito.** Para a tarefa A, nível m=3, sementes 1 a 5, em cada uma das 7 condições: no fim de cada tarefa t = 0 a 29 (0 a 11 em `media_sem_particao`, T=12), a coluna `rank_ef` (rank efetivo por entropia das ativações da última camada oculta) e a coluna `norma` (norma L2 global dos parâmetros), com média entre sementes e IC 95% por bootstrap percentil (10 000 reamostragens, `default_rng(0)`). Fonte: `results/<cond>_m3_A_<semente>.csv`.
+
+### 2026-10-21 · Fechamento da rodada 1
+- **Tag git `rodada1-final`**: marca o commit que fecha a rodada 1 (código, dados em `results/`, `MANIFESTO_results.sha256` com 793 arquivos, figuras, README e este pré-registro até aqui). A rodada 2 é pré-registrada depois da tag, em seção própria, e não altera nada marcado por ela.
+- **`--quick` cronometrado com o código final** (semente 1, tarefa A, sem `media_sem_particao`, 3 processos, pasta de saída nova): **3134 s = 52 min**, saída 0, sem erros, pico de memória 321 MB; calibração da semente 1000 em m=1, 3 e 10 (18 min), regime, seleção de λ e 14 execuções de avaliação. Os 14 CSVs saem **idênticos** aos de `results/` (mesma semente, mesmo código) e a calibração reproduz os passos (A, m=3: 1200). O tempo está no README.
+- **Braço de horizonte longo (T = 100): não rodou.** Nunca foi implementado nem pré-registrado na rodada 1 (o código só tem T = 30, e T = 12 em `media_sem_particao`). Entra na rodada 2.
