@@ -369,7 +369,7 @@ def test_sementes_antigas_nao_mudaram_com_os_papeis_novos():
         "sp_ruido", "sonda_alvo", "sonda_nova", "sonda_embaralha",
         "calib_nova", "calib_embaralha")
     assert PAPEIS[14:16] == ("media_tarefa", "dados_tarefa")           # B_disjunta (Adendo 1)
-    assert PAPEIS[16:] == ("diag_indices", "diag_hess_v0")             # diagnósticos (Desvios v3.1)
+    assert PAPEIS[16:18] == ("diag_indices", "diag_hess_v0")            # diagnósticos (Desvios v3.1)
 
 
 # ---------- Desvios v3: S_local fixo, níveis, rede nova, sementes, balanceamento ----------
@@ -596,7 +596,7 @@ def test_redes_novas_extras_nao_alteram_o_continuo(monkeypatch):
         reduzido = [t for t in completo if t % 3 == 2]            # sem as extras
         resultados = {}
         for nome, lista in (("completo", completo), ("reduzido", reduzido), ("nenhuma", [])):
-            monkeypatch.setattr(cs, "tarefas_com_nova", lambda T, lista=lista: lista)
+            monkeypatch.setattr(cs, "tarefas_com_nova", lambda T, janela_hpart=True, lista=lista: lista)
             resultados[nome] = cs.executar(cond, tipo, 1, Path(tempfile.mkdtemp()))
         for nome in ("reduzido", "nenhuma"):
             a, b = resultados["completo"], resultados[nome]

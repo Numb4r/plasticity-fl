@@ -217,6 +217,8 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
             particoes = particionar_dirichlet(sem, t, y, cond.alfa)
         if t >= 1:
             _sp(cond, continua, sem, t, 0)
+        if cond.familia == "ht":                # a lebre volta para a tartaruga ANTES de medir o início da tarefa
+            continua.load_state_dict(extra["tartaruga"])
         theta0 = vetor_parametros(continua)
         completo = (not config.DIAG_SO_REFERENCIAS) or t in com_nova     # corte (c)
         d_ini = d_fim = {}

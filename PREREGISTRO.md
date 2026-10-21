@@ -345,3 +345,19 @@ Ao codificar as regras acima (`plots/rodada2_analise.py`, docstring com as 14), 
 8. **Julgamento da previsão do horizonte longo (tarefa A):** uma condição "colapsa" se **pelo menos uma semente** colapsa; "impede a perda" exige que `sem_media_k1` e `central_aprendizado` colapsem nesse sentido e que nenhuma semente do `fedavg_iid` colapse; "só atrasa a perda" compara a mediana de colapso do `fedavg_iid` com a das duas outras (cada uma entre as sementes que colapsaram); se uma das duas não colapsou, "outro (descrever)".
 9. **Rank (exploratório):** o grupo "com média" tem 5 condições (`fedavg_dirichlet` entra uma vez, agregado nos 3 α); valor de grupo por semente = média das condições presentes; 5 últimas tarefas, todas (não só as de referência).
 10. **Sonda:** `dlog_norm` é recalculada das 12 perdas por alvo (L ≤ 0 ou NaN → NaN); `dlog_raw` vem da coluna pronta; média por semente nas tarefas de sonda.
+
+### 2026-10-21 · Rodada 2: auditoria pré-execução (antes de qualquer dado) e o que mudou
+Auditor (somente leitura) sobre o código e o pré-registro; nenhum dado da rodada 2 existe. Correções de código (não mudam regra de decisão):
+- **P1-1:** no `central_HT` a lebre agora volta para a tartaruga antes de medir o início da tarefa (`ini_*`, `distancia`); antes essas colunas exploratórias eram medidas na lebre do fim da tarefa anterior. Nenhum veredito depende delas.
+- **P1-3:** um job que falha não derruba o resto da noite; o erro vai ao log, os demais jobs seguem, o programa termina com código 1 e a mesma fase retoma os CSVs válidos.
+- **P1-4:** o teste curto apaga e refaz `calibracao/teste_curto/` a cada execução (não reaproveita CSV de código antigo).
+- Testes da rodada 1 atualizados só para aceitar os 4 papéis novos de semente e o argumento novo `janela_hpart` (sem mudar o que verificam).
+
+Registros (P2, sem mudança de regra):
+- **P0-1 (decisão do autor, pendente):** a rede nova do `central_HT` é, por construção, idêntica à do `sem_media_k1` (a tartaruga só age na tarefa seguinte, e a rede nova é descartada antes). Seu nível de aprendizado fica próximo ao do `sem_media_k1` e abaixo ao do `media_sem_particao` (rodada 1, m=3: `acc_nova` 0,77 contra 0,87 em A; 0,94 contra 0,99 em B). Logo a elegibilidade pela perda (10%) provavelmente dará "não avaliável (nível de aprendizado diferente)" para H_tempo e H_dist. Esse resultado vale como resultado e **não** é evidência a favor nem contra a previsão. Pendente: o autor decidir se acrescenta, como exploratório, a diferença pareada HT − `sem_media_k1` (mesma rede nova, então d é a diferença de `acc_cont`).
+- B_fixa: o centro usa `REF_CENTRO_PONTOS // T` pontos por tarefa = 333 × 30 = 9 990 (não 10 000).
+- O teste de μ=0 ≡ `sem_media_k1` usa a semente 1 no teste unitário (T curto) e a semente 1000 no teste curto, não a semente 6 do texto; a equivalência é bit a bit para qualquer semente.
+- A semente da partição Dirichlet não depende de α (números aleatórios comuns entre α, bom para o pareamento). α=100 não é o `fedavg_iid`.
+- Na previsão do autor, "H_het sim" será lido como veredito "atendida" (não "parcial"); "gap do fedavg_iid" no texto é lido como `fedavg_dirichlet`. Ambas as leituras aguardam confirmação do autor.
+- O custo não foi medido: estimativa de 14,7 CPU-h vem de `CUSTO_S` da rodada 1.
+- O que não se deve afirmar depois: que o HT "protege mais" com gap inflado pelo nível da rede nova; que o lookahead isola a média no tempo; qualquer leitura de sinal no rank; que o gap da B_fixa mede só plasticidade (mistura transferência).

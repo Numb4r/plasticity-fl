@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -215,11 +216,13 @@ def avaliar_teste_curto(dir_r2: Path) -> tuple[list[str], list[str]]:
 
 def fase_teste_curto(ex, dir_r2: Path) -> int:
     pasta = pasta_calib(dir_r2) / "teste_curto"
+    if pasta.exists():                          # o teste curto sempre recomeça: não reaproveita CSV de código antigo
+        shutil.rmtree(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
     futs = [ex.submit(rodar, j["nome"], j["tipo"], SEMENTE_CALIB, j["T"], j["alfa"], j["mu"], str(pasta), j["sufixo"], str(dir_r2))
             for j in jobs_teste_curto()]
     for f in futs:
-        logger.info(f.result())
+        _resultado(f)
     pare, info = avaliar_teste_curto(dir_r2)
     for i in info:
         logger.info("TESTE CURTO: %s", i)
@@ -232,13 +235,25 @@ def fase_teste_curto(ex, dir_r2: Path) -> int:
 
 
 # ---------------------------------------------------------------- completo
+FALHAS: list[str] = []
+
+
+def _resultado(f) -> None:
+    """Um job que falha não derruba o resto da noite: registra e segue; as falhas saem no fim."""
+    try:
+        logger.info(f.result())
+    except Exception as e:                      # noqa: BLE001 (qualquer erro de worker deve ser registrado)
+        FALHAS.append(repr(e))
+        logger.error("JOB FALHOU: %r", e)
+
+
 def fase_selecao(ex, dir_r2: Path) -> dict:
     t0 = time.time()
     pasta_calib(dir_r2).mkdir(parents=True, exist_ok=True)
     fs = [ex.submit(job_rodar_r2, "fedavg_iid", "B_fixa", SEMENTE_CALIB, T_PADRAO, None, str(dir_r2))]
     fs += [ex.submit(job_selecao_mu, m, t, mu, str(dir_r2)) for m in ("HT", "lookahead") for t in ("A", "B") for mu in MUS]
     for f in fs:
-        logger.info(f.result())
+        _resultado(f)
     for m in ("HT", "lookahead"):
         for t in ("A", "B"):
             escolher_mu(m, t, dir_r2)
@@ -258,7 +273,7 @@ def fase_completo(ex, dir_r2: Path, sem_teste_curto: bool = False) -> dict:
         plano = sorted(plano, key=_custo, reverse=True)
         fs = [ex.submit(job_rodar_r2, c, tipo, sem, T, alfa, str(dir_r2)) for c, tipo, sem, T, alfa in plano]
         for f in fs:
-            logger.info(f.result())
+            _resultado(f)
         tempos[f"{nome}_s"] = time.time() - t0
     return tempos
 
@@ -289,6 +304,9 @@ def main() -> None:
     tempos["total_s"] = time.time() - t0
     (dir_r2 / f"tempo_{a.fase}.json").write_text(json.dumps(tempos, indent=1))
     logger.info("tempos: %s", tempos)
+    if FALHAS:
+        logger.error("%d JOB(S) FALHARAM: %s (rode a mesma fase de novo para retomar)", len(FALHAS), FALHAS)
+        codigo = codigo or 1
     raise SystemExit(codigo)
 
 
