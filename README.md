@@ -61,7 +61,7 @@ Python 3.11, PyTorch (CPU), numpy, pandas, matplotlib, pytest. Nenhum download d
 uv venv --python 3.11
 uv pip install --python .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
 uv pip install --python .venv/bin/python numpy pandas matplotlib pytest
-.venv/bin/python -m pytest -q          # 61 testes, ~15 min (os diagnósticos rodam em todos os testes de semente de avaliação)
+.venv/bin/python -m pytest -q          # 62 testes, ~15 min (os diagnósticos rodam em todos os testes de semente de avaliação)
 ```
 
 Execução (sempre em CPU, determinística; cada processo usa ~0,3 GB de memória, ajuste `--processos` à sua máquina):
