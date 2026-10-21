@@ -1,0 +1,45 @@
+{
+ "isolado": {
+  "c_cheio_s": 0.18612487698555924,
+  "c_leve_s": 0.014202003017999232,
+  "treino_total_cpu_s": 50102.57246376811,
+  "fixo_cpu_s": 5400,
+  "base_cpu_s": 55502.57246376811,
+  "diag_cheio_cpu_s": 3914.206163006311,
+  "acrescimo_cheio": 0.07052296838243832,
+  "diag_corte_c_cpu_s": 2825.934370791656,
+  "acrescimo_corte_c": 0.05091537644739649,
+  "medicoes_por_execucao": {
+   "T30": 92,
+   "T12": 38
+  },
+  "execucoes": {
+   "T30": 210,
+   "T12": 45
+  }
+ },
+ "fedavg_m1_medido": {
+  "sem_s": 163.22,
+  "com_s": 201.81,
+  "acrescimo": 0.23642935914716334,
+  "medicoes": 92,
+  "c_situ_s": 0.41945652173913045
+ },
+ "em_situacao": {
+  "treino_total_cpu_s": 50102.57246376811,
+  "fixo_cpu_s": 5400,
+  "base_cpu_s": 55502.57246376811,
+  "diag_cheio_cpu_s": 8821.170652173912,
+  "acrescimo_cheio": 0.15893264511176203,
+  "diag_corte_c_cpu_s": 6368.609188804427,
+  "acrescimo_corte_c": 0.11474439663065766,
+  "medicoes_por_execucao": {
+   "T30": 92,
+   "T12": 38
+  },
+  "execucoes": {
+   "T30": 210,
+   "T12": 45
+  }
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "tarefa": "A",
+ "metodo": "SP",
+ "nivel": 3,
+ "lambda": 0.8,
+ "notas": {
+  "0.4": 0.7726000070571899,
+  "0.6": 0.8419999957084656,
+  "0.8": 0.9355999946594238
+ },
+ "esquecimento": {},
+ "esquecimento_ref": null,
+ "violacao": false,
+ "versao_dados": 2,
+ "passos_centrais": 1200
+}

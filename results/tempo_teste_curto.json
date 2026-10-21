@@ -1,0 +1,14 @@
+{
+ "resultado": {
+  "gaps": {
+   "fedavg_iid_m1": 0.15140000581741328,
+   "sem_media_k1_m1": 0.12180000543594358,
+   "central_passos_m1": 0.08580000996589658,
+   "fedavg_iid_m10": -0.05820000171661373,
+   "sem_media_k1_m10": -0.31980000138282777,
+   "central_passos_m10": -0.7710000038146972
+  },
+  "central_passos_m10_perde": true
+ },
+ "total_s": 1057.4904382228851
+}
