@@ -262,3 +262,6 @@ Medição feita com `python -m experiments.medir_custo` (resultado em `results/c
 3. **Partição não IID por Dirichlet na tarefa B** (α em {0,1; 1; 100}), para separar o efeito de dividir os dados do efeito de promediar.
 4. **Sonda reformulada:** passos calibrados (10% a 30% da perda inicial), perda por alvo guardada, mediana do Δlog entre alvos.
 5. Também sugeridos pelos dados: grade de λ estendida além da borda (L2 < 1e-4; SP > 0,8), mais de uma semente de calibração para m\*, e um nível entre 1 e 3.
+
+### 2026-10-21 · Esclarecimento sobre o incidente das pastas esvaziadas
+O autor informou que **apagou as pastas sem querer** (`logs/` e `results_v1_exploratorio/`, 2026-10-20, 16:45). A causa fica registrada como **apagamento acidental pelo autor, por declaração dele**; não é verificável tecnicamente (o histórico dos terminais abertos não foi gravado), mas é compatível com tudo o que se verificou (nenhuma ferramenta de sessão ou subagente ativa, nenhum código do repositório que apague essas pastas, duas pastas esvaziadas com 18 s de intervalo). Nada confirmatório estava nelas. As medidas de proteção (somente leitura de `results/`, manifesto sha256, regra no `CLAUDE.md`) permanecem, como salvaguarda contra qualquer apagamento acidental, de qualquer origem.
