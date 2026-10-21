@@ -153,9 +153,9 @@ def legenda_fig(fig, com_media, com_cond, com_vazado, notas=True):
     if com_vazado:
         hs.append(Line2D([], [], linestyle="none", marker="o", markerfacecolor="white", markeredgecolor="black",
                          markersize=8, label="marcador vazado: >=1 semente com hess_conv=0 (não convergiu)"))
-    fig.legend(handles=hs, fontsize=8, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.045 if notas else 0.0))
+    fig.legend(handles=hs, fontsize=8, loc="lower center", ncol=2, bbox_to_anchor=(0.5, (0.62 if notas else 0.0) / fig.get_figheight()))
     if notas:
-        fig.text(0.5, 0.005, NOTA_NOVA + "\n" + NOTAS if com_media or com_cond else NOTAS, ha="center",
+        fig.text(0.5, 0.08 / fig.get_figheight(), NOTA_NOVA + "\n" + NOTAS if com_media or com_cond else NOTAS, ha="center",
                  va="bottom", fontsize=7)
 
 
@@ -180,7 +180,7 @@ def figura(df, nivel, aviso, saida, nome):
          "Linhas inferiores: diagnósticos exploratórios (Klein et al. 2026), sem regra de decisão. "
          "Média e IC 95% bootstrap entre sementes")
     fig.suptitle(t + ("\n" + aviso if aviso else ""), fontsize=10)
-    fig.tight_layout(rect=(0, 0.09, 1, 0.97 - (0.01 if aviso else 0)))
+    fig.tight_layout(rect=(0, 1.9 / fig.get_figheight(), 1, 0.97 - (0.01 if aviso else 0)))
     fig.savefig(os.path.join(saida, nome), dpi=200)
     plt.close(fig)
 
