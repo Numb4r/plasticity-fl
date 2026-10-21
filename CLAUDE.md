@@ -33,3 +33,9 @@ Regras de coordenação:
 3. Dois agentes nunca editam o mesmo arquivo ao mesmo tempo.
 4. O executor roda uma semente por processo em paralelo, respeitando o número de núcleos.
 5. Se o auditor apontar um problema depois de ver resultados, a correção vai para "Desvios" em `PREREGISTRO.md`; nenhum agente altera o pré-registro.
+
+## Proteção de `results/` (incidente de 2026-10-20; ver "Desvios" no PREREGISTRO.md)
+- **Nenhum agente apaga, move, renomeia, sobrescreve ou trunca arquivos em `results/`** (incluindo `results/calibracao/`), em `results_*` (arquivos mortos) nem em `logs/`; e só o `gerador-graficos` regrava `plots/` e `figures/`, mais ninguém. "Limpar artefatos descartáveis" nunca vale para essas pastas. Exceção só com instrução escrita do autor citando o caminho.
+- Depois de cada execução **completa**, o pipeline deixa `results/` **somente leitura** (`experiments/protecao.py`: arquivos 0444, pastas 0555). Para rodar de novo, use outra `--saida`; reabrir exige `--reabrir-resultados` e autorização do autor.
+- `MANIFESTO_results.sha256` guarda o hash de cada arquivo de `results/`. Conferir com `sha256sum -c MANIFESTO_results.sha256`. Se mudar, é incidente: registrar em "Desvios".
+- Agentes **leem** `results/`; o `gerador-graficos` escreve só em `plots/` e `figures/`; o `executor-experimentos` só roda os scripts (que gravam CSVs novos, nunca por cima de arquivos existentes); o `auditor-metricas` não escreve em lugar nenhum.

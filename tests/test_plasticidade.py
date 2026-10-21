@@ -606,3 +606,32 @@ def test_redes_novas_extras_nao_alteram_o_continuo(monkeypatch):
                     pd.testing.assert_series_equal(a[col], b[col], check_exact=True)
         assert resultados["completo"]["acc_nova"].notna().sum() == len(completo) > len(reduzido)
         assert resultados["nenhuma"]["acc_nova"].notna().sum() == 0
+
+
+# ---------- proteção de results/ (incidente de 2026-10-20) ----------
+
+def test_proteger_impede_sobrescrever_apagar_e_criar_e_reabrir_desfaz(tmp_path):
+    import os
+    import pytest
+    from experiments.protecao import proteger, protegido, reabrir
+    pasta = tmp_path / "res"
+    (pasta / "sub").mkdir(parents=True)
+    arq = pasta / "a.csv"
+    arq.write_text("x")
+    (pasta / "sub" / "b.csv").write_text("y")
+    try:
+        assert not protegido(pasta)
+        assert proteger(pasta) == 2 and protegido(pasta)
+        with pytest.raises(PermissionError):
+            arq.write_text("novo")                      # sobrescrever
+        with pytest.raises(PermissionError):
+            (pasta / "c.csv").write_text("z")           # criar
+        with pytest.raises(PermissionError):
+            arq.unlink()                                # apagar
+        with pytest.raises(PermissionError):
+            (pasta / "sub" / "b.csv").unlink()          # apagar em subpasta
+        assert arq.read_text() == "x"                   # leitura continua
+    finally:
+        reabrir(pasta)
+    arq.write_text("ok")
+    assert not protegido(pasta) and arq.read_text() == "ok"

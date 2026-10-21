@@ -79,7 +79,7 @@ def projetar(c_cheio: float, c_leve: float, treino: dict, m_star: int = 10) -> d
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--log", default="logs/pipeline_teste_curto.log")
-    ap.add_argument("--saida", default="results/custo_diagnosticos.json")
+    ap.add_argument("--saida", default="custo_diagnosticos.json")
     ap.add_argument("--sem-s", type=float, default=None, help="segundos de fedavg_iid m=1 T=30 SEM diagnósticos")
     ap.add_argument("--com-s", type=float, default=None, help="idem COM diagnósticos (mesma máquina, em paralelo)")
     a = ap.parse_args()
