@@ -23,7 +23,6 @@ import pandas as pd
 import torch
 
 from experiments.calibrar import calibrar
-from experiments.protecao import proteger, protegido, reabrir
 from experiments.selecionar import referencia, selecionar
 from src.condicoes import CONDICOES, _base_arquivo, carregar_condicao, csv_valido, executar, pasta_calib
 from src.config import NIVEIS, SEMENTE_CALIB, SEMENTES_AVALIACAO, VERSAO_DADOS
@@ -172,8 +171,6 @@ def main() -> None:
     ap.add_argument("--niveis", nargs="+", type=int, choices=NIVEIS, default=None)
     ap.add_argument("--sementes", nargs="+", type=int, default=None, help="padrão: 1 2 3 4 5 (1 no quick)")
     ap.add_argument("--saida", default="results")
-    ap.add_argument("--reabrir-resultados", action="store_true",
-                    help="desprotege a pasta de saída (somente com autorização do autor)")
     ap.add_argument("--processos", type=int, default=4, help="cada processo usa ~0,6 GB; confira a memória livre")
     a = ap.parse_args()
     os.environ["PLAST_DISPOSITIVO"] = "cpu"   # o pipeline sempre usa CPU
@@ -187,12 +184,6 @@ def main() -> None:
     sementes = a.sementes or ([SEMENTES_AVALIACAO[0]] if a.quick else list(SEMENTES_AVALIACAO))
     conds = [c for c in CONDICOES if not (a.quick and c == "media_sem_particao")]
     dir_res = Path(a.saida)
-    if a.reabrir_resultados and dir_res.exists():
-        reabrir(dir_res)
-        logger.warning("%s reaberta para escrita por --reabrir-resultados", dir_res)
-    if protegido(dir_res):
-        raise SystemExit(f"{dir_res}/ está protegida (somente leitura) depois de uma execução completa. "
-                         "Use outra --saida, ou --reabrir-resultados com autorização do autor.")
     dir_res.mkdir(exist_ok=True)
     t0 = time.time()
     with ProcessPoolExecutor(a.processos, initializer=_preparar_processo) as ex:
@@ -206,8 +197,6 @@ def main() -> None:
     nome = "quick" if a.quick else a.fase
     (dir_res / f"tempo_{nome}.json").write_text(json.dumps(tempos, indent=1, default=str))
     logger.info("tempos: %s", tempos)
-    if a.fase == "completo" and not a.quick:      # execução completa: deixa results/ somente leitura
-        logger.info("%d arquivos de %s/ ficaram somente leitura", proteger(dir_res), dir_res)
 
 
 if __name__ == "__main__":

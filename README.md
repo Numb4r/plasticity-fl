@@ -41,10 +41,6 @@ O que **não** pode ser afirmado: nada sobre esquecimento ou trade-off (o eixo e
 - *Área do gap* (`figures/exploratorio_gap_area.md`, `figures/exploratorio_fig_gap_curvas.png`): o gap médio ao longo de toda a sequência (integral trapezoidal dos pontos com rede nova, dividida pelo intervalo). Ordena as condições como a métrica das 5 últimas tarefas, com menos amplitude. Tarefa A, m=3: `fedavg_iid` +0,030, `media_sem_particao` +0,048, `sem_media_k1` −0,138, `central_passos` −0,209, `central_aprendizado` −0,251, `central_L2` +0,127, `central_SP` +0,152.
 - *Sonda em escala logarítmica* (`figures/exploratorio_sonda_log.md`, `figures/exploratorio_fig_sonda_log.png`): Δlog = log10(perda da cópia + 1e-6) − log10(perda da rede nova + 1e-6), com as médias das 3 perdas por alvo (a **mediana entre alvos não é computável**: os CSVs só guardam a média). Δlog é positivo em **todas** as condições, inclusive nas que não perdem plasticidade (`media_sem_particao` em m=10, gap 0, Δlog +7,5), e cresce com o nível e com a norma (tarefa A, `fedavg_iid`: +3,6, +5,4 e +7,9 em m = 1, 3, 10, com norma média 35, 115 e 280): a sonda acompanha a escala das saídas, não a plasticidade. Os 300 passos **saturam** a rede nova (perda final em 2,6% da inicial; ela passa de 30% a 10% da inicial entre os passos ~9 e ~46, `analise_exploratoria_sonda_passos.md`).
 
-## Incidente e proteção de `results/`
-
-Em 2026-10-20, às 16:45, o conteúdo de `logs/` e a pasta `results_v1_exploratorio/` (87 arquivos do desenho antigo, semente 0) foram esvaziados. O autor informou que **apagou sem querer** (declaração dele; compatível com o que se verificou: nenhuma ferramenta de sessão ou subagente estava ativa, nenhum código do repositório apaga essas pastas, duas pastas esvaziadas com 18 s de intervalo). Nenhum CSV confirmatório estava lá (foram criados 6,5 h depois). Medidas: `MANIFESTO_results.sha256` (793 arquivos; `sha256sum -c MANIFESTO_results.sha256`), `results/` somente leitura depois de cada execução completa (`experiments/protecao.py`; para reabrir, `--reabrir-resultados`, só com autorização do autor) e regra no `CLAUDE.md` proibindo qualquer agente de apagar ou sobrescrever `results/`. Detalhes nos Desvios.
-
 ## Propostas para a próxima rodada (nada implementado)
 
 1. **B_disjunta com professor fixo e só a entrada deslocada**, para que haja algo a reter, e uma **medida de reaprendizado**: quantos passos para voltar a 90% da acurácia antiga numa tarefa velha.
@@ -61,7 +57,7 @@ Python 3.11, PyTorch (CPU), numpy, pandas, matplotlib, pytest. Nenhum download d
 uv venv --python 3.11
 uv pip install --python .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
 uv pip install --python .venv/bin/python numpy pandas matplotlib pytest
-.venv/bin/python -m pytest -q          # 62 testes, ~15 min (os diagnósticos rodam em todos os testes de semente de avaliação)
+.venv/bin/python -m pytest -q          # 61 testes, ~15 min (os diagnósticos rodam em todos os testes de semente de avaliação)
 ```
 
 Execução (sempre em CPU, determinística; cada processo usa ~0,3 GB de memória, ajuste `--processos` à sua máquina):
@@ -78,7 +74,7 @@ Execução (sempre em CPU, determinística; cada processo usa ~0,3 GB de memóri
 .venv/bin/python -m experiments.pipeline --fase calibracao --processos 3    # calibração, regime m*, seleção de λ
 ```
 
-A execução retoma de onde parou: CSVs completos e com os mesmos parâmetros são pulados. Depois de um `--fase completo` (sem `--quick`), `results/` fica **somente leitura**; para rodar de novo use outra `--saida` ou `--reabrir-resultados` (com autorização do autor). Figuras e tabela:
+A execução retoma de onde parou: CSVs completos e com os mesmos parâmetros são pulados. Figuras e tabela:
 
 ```bash
 for s in fig_gap fig_norma fig_sonda fig_tradeoff fig_dose fig_k1_mecanismo tabela_decisao; do .venv/bin/python plots/$s.py; done

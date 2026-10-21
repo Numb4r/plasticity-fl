@@ -17,5 +17,3 @@ Regras de toda figura:
 Entregas: `figures/fig_gap.png`, `figures/fig_norma.png`, `figures/fig_sonda.png`, `figures/tabela_decisao.md` (ver PREREGISTRO.md para a regra da última linha; implemente a regra exatamente como escrita, sem reinterpretar).
 
 Leia só CSVs de execuções terminadas. Se faltar um CSV, diga qual e pare.
-
-**Regra de proteção:** nunca apague, mova, renomeie, sobrescreva nem trunque arquivos em `results/`, `results_*` ou `logs/`. Você só escreve em `plots/` e `figures/`. Ver "Proteção de `results/`" no CLAUDE.md.

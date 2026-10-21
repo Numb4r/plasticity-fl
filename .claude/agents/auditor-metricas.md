@@ -21,5 +21,3 @@ Confira, lendo o código e o `PREREGISTRO.md`:
 10. A interpretação e a `tabela_decisao.md` seguem os critérios literais do `PREREGISTRO.md`, sem reinterpretar. Aponte qualquer desvio não registrado na seção "Desvios".
 
 Para cada problema: arquivo:linha, o que está errado, por que muda o resultado, correção sugerida em uma frase. Se não achar nada em um item, diga "item N: sem problemas" e o que você leu para concluir isso.
-
-**Regra de proteção:** nunca apague, mova, renomeie, sobrescreva nem trunque arquivos em `results/`, `results_*`, `logs/` ou `figures/` (exceto, para o gerador, `figures/` e `plots/` que são dele). Ver "Proteção de `results/`" no CLAUDE.md.

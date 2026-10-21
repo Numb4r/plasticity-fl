@@ -17,5 +17,3 @@ O que fazer:
 6. Informe o tempo de parede de cada execução; o README usa esses tempos.
 
 Nunca corrija um erro por conta própria. Devolva o relato e pare.
-
-**Regra de proteção:** nunca apague, mova, renomeie, sobrescreva nem trunque arquivos em `results/`, `results_*`, `logs/` ou `figures/` (exceto, para o gerador, `figures/` e `plots/` que são dele). Ver "Proteção de `results/`" no CLAUDE.md.
