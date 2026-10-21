@@ -15,3 +15,7 @@ Seleção: L2 lambda=1e-4 (A e B_disjunta); SP lambda=0,8 (A e B_disjunta). (Val
 
 ## 2026-10-20 · Material exploratório do desenho antigo apagado (causa desconhecida)
 `results_v1_exploratorio/` (87 arquivos: CSVs, matrizes e JSONs da semente 0 do desenho antigo, mais o pipeline completo interrompido) e `logs/` apareceram vazios por volta das 16:45. Nenhum código do repositório apaga essas pastas e a sessão não executou `rm`; pode ter sido limpeza manual. Nada disso alimenta a análise confirmatória (semente 0 e desenho antigo são exploratórios). Reproduzível: `git worktree add` do commit 0b1c019 e rodar `python -m experiments.pipeline --quick --tarefas A B_disjunta` (~10 min, CPU, determinístico). Os números que importam estão em PREREGISTRO.md (Desvios v3) e nesta sessão.
+
+## 2026-10-21 · Completo: pressão de memória do sistema
+Às 09:17:36 o OOM-killer do kernel matou o `claude-desktop` (memória global esgotada, ~2,5 GB livres durante a noite). O pipeline (4 processos, ~0,3 GB cada, ~1,3 GB no total) continuou vivo. Sinais de pausas longas: execuções de `central_passos` m=3 com tempo de parede de ~5400 s na tarefa 16 contra ~70 s nas vizinhas, compatíveis com o computador congelado ou em swap durante a noite; não investigado. O pipeline é retomável: se um processo for morto, basta relançar o mesmo comando (CSVs válidos são pulados).
+Progresso às 09:18: 165/255 CSVs de avaliação; regime m*=3 definido em results/calibracao/regime.json (gap de central_aprendizado na tarefa A, semente 1000: m=1 +0,102; m=3 −0,351; m=10 −0,785).
