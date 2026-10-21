@@ -321,4 +321,8 @@ A rodada 1 sugeriu que o FedAvg perde menos plasticidade que o centralizado no m
 1. Decisões registradas e status FECHADO (este commit). 2. O autor preenche a previsão → commit só da previsão → hash anotado aqui. 3. Implementação e testes. 4. Auditoria do código pré-execução (somente leitura). 5. O autor roda o teste curto e o completo (o assistente não roda experimentos da rodada 2). 6. Auditoria dos resultados antes de interpretar, com leituras novas como exploratórias nos Desvios. Os vereditos seguem as regras acima, sem ajuste depois dos resultados.
 
 ### Previsão do autor (rodada 2)
-(a preencher pelo autor, antes de qualquer código da rodada 2)
+Previsão do autor (rodada 2), escrita em 2026-10-21, antes de qualquer implementação. Confiança média.
+- H_tempo: não. Prevejo que o central_HT protege MAIS que o media_sem_particao, com a diferença pareada acima da margem δ = 0,02 a favor do central_HT.
+- H_dist: não, pelo mesmo motivo: a média sem partição não supera a média no tempo.
+- H_het: sim. Prevejo que o gap do fedavg_iid piora quando alpha diminui (0,1 pior que 1, e 1 pior que 100).
+- Horizonte longo: o FedAvg só atrasa a perda. Prevejo que o fedavg_iid colapsa em pelo menos uma semente, mais tarde que o sem_media_k1 e o central_aprendizado.
