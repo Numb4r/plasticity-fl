@@ -16,6 +16,7 @@ PAPEIS = (
     "calib_nova", "calib_embaralha",
     "media_tarefa", "dados_tarefa",   # B_disjunta (adendo 1), acrescentados no fim
     "diag_indices", "diag_hess_v0",   # diagnósticos de Klein et al. (Desvios v3.1)
+    "particao_dirichlet", "ref_centro", "reaprende", "reaprende_nova",   # rodada 2, acrescentados no fim
 )
 
 

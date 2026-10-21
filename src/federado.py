@@ -4,7 +4,7 @@ import torch
 from src.config import BATCH, S_LOCAL
 from src.metricas import cosseno_medio
 from src.modelo import MLP
-from src.treino import treinar_passos
+from src.treino import treinar_passos, treinar_passos_geral
 
 
 def media_ponderada(estados: list[dict], pesos: list[int]) -> dict:
@@ -29,7 +29,7 @@ def _vetor_estado(estado: dict) -> torch.Tensor:
 
 
 def treino_local(
-    modelo_local: MLP, estado_global: dict, X, y, indices, gerador
+    modelo_local: MLP, estado_global: dict, X, y, indices, gerador, geral: bool = False
 ) -> dict:
     """Um cliente numa rodada: parte do modelo global e faz S_LOCAL=15 passos, batch 20.
 
@@ -39,13 +39,16 @@ def treino_local(
     de uma rodada para a outra.
     """
     modelo_local.load_state_dict(estado_global)
-    treinar_passos(modelo_local, X, y, indices, S_LOCAL, BATCH, S_LOCAL, gerador)
+    if geral:        # clientes de tamanho qualquer (Dirichlet, rodada 2); caminho separado
+        treinar_passos_geral(modelo_local, X, y, indices, S_LOCAL, BATCH, gerador)
+    else:
+        treinar_passos(modelo_local, X, y, indices, S_LOCAL, BATCH, S_LOCAL, gerador)
     return {k: v.detach().clone() for k, v in modelo_local.state_dict().items()}
 
 
 def treinar_fedavg(
     modelo_global: MLP, X, y, particoes: list[torch.Tensor], gerador: torch.Generator,
-    rodadas: int,
+    rodadas: int, geral: bool = False,
 ) -> list[float]:
     """`rodadas` rodadas de FedAvg (25·m) sobre o modelo global (in-place).
 
@@ -54,11 +57,12 @@ def treinar_fedavg(
     """
     cosenos = []
     local = MLP().to(X.device)
+    particoes = [p for p in particoes if len(p) > 0]       # cliente vazio fica fora da rodada e do peso
     pesos = [len(p) for p in particoes]
     for _ in range(rodadas):
         global_antes = {k: v.detach().clone() for k, v in modelo_global.state_dict().items()}
         vetor_global = _vetor_estado(global_antes)
-        estados = [treino_local(local, global_antes, X, y, p, gerador) for p in particoes]
+        estados = [treino_local(local, global_antes, X, y, p, gerador, geral) for p in particoes]
         cosenos.append(cosseno_medio([_vetor_estado(e) - vetor_global for e in estados]))
         modelo_global.load_state_dict(media_ponderada(estados, pesos))
     return cosenos

@@ -9,6 +9,12 @@ from src.modelo import MLP
 
 
 @torch.no_grad()
+def perda_ce(modelo: MLP, X: torch.Tensor, y: torch.Tensor) -> float:
+    """Entropia cruzada média (perda de treino) nos pontos da tarefa."""
+    return torch.nn.functional.cross_entropy(modelo(X), y).item()
+
+
+@torch.no_grad()
 def acuracia(modelo: MLP, X: torch.Tensor, y: torch.Tensor) -> float:
     return (modelo(X).argmax(dim=1) == y).float().mean().item()
 

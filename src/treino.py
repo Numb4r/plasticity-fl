@@ -57,3 +57,39 @@ def shrink_and_perturb(modelo: MLP, lam: float, escala: float, gerador: torch.Ge
     for p in modelo.parameters():
         ruido = torch.randn(p.shape, generator=gerador).to(p.device) * escala
         p.mul_(lam).add_(ruido)
+
+
+def treinar_passos_geral(
+    modelo: MLP,
+    X: torch.Tensor,
+    y: torch.Tensor,
+    indices: torch.Tensor,
+    n_passos: int,
+    batch: int,
+    gerador: torch.Generator,
+) -> int:
+    """Treino local para clientes de qualquer tamanho (Dirichlet, rodada 2).
+
+    Caminho SEPARADO do `treinar_passos` (que exige n múltiplo do batch e é o que gerou os
+    resultados da rodada 1). Um Adam novo por chamada (uma rodada local). Lotes:
+      n >= batch: de permutações encadeadas (o lote pode atravessar a fronteira de época);
+      n <  batch: `batch` índices sorteados com reposição.
+    Devolve o número de passos executados. `indices` deve ter n >= 1.
+    """
+    n = len(indices)
+    assert n >= 1, "cliente vazio não treina"
+    perda = nn.CrossEntropyLoss()
+    opt = torch.optim.Adam(modelo.parameters(), lr=LR)
+    fila = indices[:0]
+    for _ in range(n_passos):
+        if n < batch:
+            idx = indices[torch.randint(0, n, (batch,), generator=gerador).to(indices.device)]
+        else:
+            while len(fila) < batch:
+                ordem = torch.randperm(n, generator=gerador).to(indices.device)
+                fila = torch.cat([fila, indices[ordem]])
+            idx, fila = fila[:batch], fila[batch:]
+        opt.zero_grad(set_to_none=True)
+        perda(modelo(X[idx]), y[idx]).backward()
+        opt.step()
+    return n_passos
