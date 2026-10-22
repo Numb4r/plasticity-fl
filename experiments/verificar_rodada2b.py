@@ -33,7 +33,7 @@ def verificar(dir_r2b: Path, log: Path | None) -> tuple[list[str], int]:
     res = dir_r2b / "calibracao" / "teste_curto" / "RESULTADO.txt"
     if not (res.exists() and res.read_text().startswith("OK")):
         erros.append("teste curto sem RESULTADO.txt OK")
-    rodadas = {}
+    rodadas, mu_sel = {}, {}
     for t in ("A", "B"):
         for arq in (f"calibracao_HT2_{t}_m3.json", f"selecao_HTcal2_{t}_m3.json"):
             if not (dir_r2b / "calibracao" / arq).exists():
@@ -41,6 +41,21 @@ def verificar(dir_r2b: Path, log: Path | None) -> tuple[list[str], int]:
         arq = dir_r2b / "calibracao" / f"calibracao_HT2_{t}_m3.json"
         if arq.exists():
             rodadas[t] = json.loads(arq.read_text())["rodadas"]
+    for t in ("A", "B"):
+        arq = dir_r2b / "calibracao" / f"calibracao_HT2_{t}_m3.json"
+        sel = dir_r2b / "calibracao" / f"selecao_HTcal2_{t}_m3.json"
+        if arq.exists():
+            c = json.loads(arq.read_text())
+            if c.get("grade") != [75, 150] or len(c.get("tentativas", {})) != 76:
+                erros.append(f"calibracao_HT2_{t}: grade {c.get('grade')} com {len(c.get('tentativas', {}))} valores, esperado [75, 150] e 76")
+            anterior = Path("results_rodada2") / "calibracao" / f"calibracao_HT_{t}_m3.json"
+            if anterior.exists() and abs(json.loads(anterior.read_text())["alvo_loss_nova_msp"] - c["alvo_loss_nova_msp"]) > 1e-9:
+                erros.append(f"calibracao_HT2_{t}: alvo difere do alvo da rodada 2")
+        for mu in (0.9, 0.99, 0.995, 0.999):
+            if not (dir_r2b / "calibracao" / "selecao_mu" / f"central_HT_cal2_mu{mu:g}_m3_{t}_1000.csv").exists():
+                erros.append(f"falta o CSV de seleção de μ={mu:g} ({t})")
+        if sel.exists():
+            mu_sel[t] = json.loads(sel.read_text())["mu"]
     plano = plano_confirmatorio()
     for job in plano:
         cond, tipo, sem, T = job
@@ -65,6 +80,8 @@ def verificar(dir_r2b: Path, log: Path | None) -> tuple[list[str], int]:
         if cond == "central_HT_cal2":
             if d["acc_tartaruga"].isna().any():
                 erros.append(f"{f.name}: acc_tartaruga faltando")
+            if mu_sel.get(tipo) is not None and p.get("mu") != mu_sel[tipo]:
+                erros.append(f"{f.name}: μ {p.get('mu')} não bate com a seleção ({mu_sel[tipo]})")
             if rodadas.get(tipo) is not None and (p.get("rodadas") != rodadas[tipo] or p.get("s_local") != 15):
                 erros.append(f"{f.name}: params ({p.get('rodadas')} rodadas, S={p.get('s_local')}) não batem com a calibração (R={rodadas[tipo]}, S=15)")
         elif p.get("rodadas") != 75:

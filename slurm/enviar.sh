@@ -9,7 +9,7 @@ REMOTE_HOST="ssh.recod.ic.unicamp.br"
 REMOTE_DIR="plasticidade"                      # relativo ao home remoto
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-if [[ -n "$(git -C "$LOCAL_DIR" status --porcelain)" ]]; then
+if [[ -n "$(git -C "$LOCAL_DIR" status --porcelain -- . ':(exclude)slurm/COMMIT')" ]]; then
     echo "AVISO: há alterações não commitadas; o que será enviado não corresponde a um commit." >&2
 fi
 git -C "$LOCAL_DIR" rev-parse HEAD > "$LOCAL_DIR/slurm/COMMIT"     # o job registra qual commit rodou

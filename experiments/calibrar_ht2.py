@@ -12,6 +12,7 @@ como a lebre não depende de R (R só diz quando parar), cada rede é treinada u
 Uso: python -m experiments.calibrar_ht2 --tarefa A --saida results_rodada2b
 """
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -68,7 +69,8 @@ def calibrar_ht2(tarefa: str, dir_r2b: Path, *, T: int = T_PADRAO, grade: tuple[
     res = {"tarefa": tarefa, "alvo_loss_nova_msp": alvo, "rodadas": melhor, "loss_ht": medias[melhor], "erro_rel": erro,
            "ok": abs(erro) <= TOLERANCIA_HT_CAL, "tolerancia": TOLERANCIA_HT_CAL, "grade": [r_min, r_max],
            "alvo_fora_do_alcance": bool(alvo < min(medias.values()) or alvo > max(medias.values())),
-           "versao_dados": VERSAO_DADOS, "tentativas": medias}
+           "versao_dados": VERSAO_DADOS, "referencia": str(referencia),
+           "referencia_sha256": hashlib.sha256(Path(referencia).read_bytes()).hexdigest(), "tentativas": medias}
     Path(saida).parent.mkdir(parents=True, exist_ok=True)
     Path(saida).write_text(json.dumps(res, indent=1))
     logger.info("calibração HT2 %s: alvo(msp)=%.4f R=%d loss=%.4f erro_rel=%+.3f ok=%s",

@@ -38,10 +38,19 @@ def test_condicao_r2_central_ht_cal2_le_r_e_mu_e_o_override_vale_para_todas(tmp_
 def test_ht_cal2_com_mu_zero_e_r_diferente_de_75_reproduz_o_sem_media_k1_com_o_mesmo_r():
     k1 = cs.condicao_r2("sem_media_k1", "A", Path("."), T=3, rodadas=4)
     ht = cs.condicao_r2("central_HT_cal2", "A", Path("."), T=3, rodadas=4, mu=0.0)
-    a, b = _executar(k1), _executar(ht)
+    ant = torch.get_num_threads()
+    torch.set_num_threads(1)                                   # igualdade bit a bit só vale com 1 thread (como no cluster)
+    try:
+        a, b = _executar(k1), _executar(ht)
+    finally:
+        torch.set_num_threads(ant)
     cols = [c for c in a.columns if c not in ("cond", "mu", "acc_tartaruga")]
     pd.testing.assert_frame_equal(a[cols], b[cols], check_exact=True)
-    ht9 = _executar(replace(ht, mu=0.9))
+    torch.set_num_threads(1)
+    try:
+        ht9 = _executar(replace(ht, mu=0.9))
+    finally:
+        torch.set_num_threads(ant)
     assert not a["acc_cont"].equals(ht9["acc_cont"]) or not a["loss_cont"].equals(ht9["loss_cont"])   # μ age
 
 
@@ -181,6 +190,6 @@ def test_teste_curto_da_2b_em_miniatura_pare_e_ok(tmp_path, monkeypatch):
     assert p.fase_teste_curto(_Serial(), tmp_path) == 0
     res = (tmp_path / "calibracao" / "teste_curto" / "RESULTADO.txt").read_text()
     assert res.startswith("OK") and "PARE:" not in res
-    monkeypatch.setattr(p, "fase_selecao", lambda ex, d: (_ for _ in ()).throw(RuntimeError("gate abriu")))
+    monkeypatch.setattr(p, "job_rodar", lambda *a: (_ for _ in ()).throw(RuntimeError("gate abriu")))   # nada roda de verdade
     with pytest.raises(RuntimeError, match="gate abriu"):
-        p.fase_completo(None, tmp_path)
+        p.fase_completo(_Serial(), tmp_path)

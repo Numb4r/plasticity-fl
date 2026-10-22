@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from experiments.calibrar_ht2 import calibrar_ht2
+from experiments.calibrar_ht2 import DIR_REFERENCIA, calibrar_ht2
 from experiments.pipeline_r2 import _preparar_processo, rodar
 from src.condicoes import _base_arquivo, condicao_r2, pasta_calib
 from src.config import MUS_2B, NIVEL_R2, R_CAL2, SEMENTE_CALIB, SEMENTES_R2B, T_PADRAO
@@ -153,6 +153,23 @@ def avaliar_teste_curto(dir_r2b: Path) -> tuple[list[str], list[str]]:
                 f"erro_rel={c['erro_rel']:+.3f} (só testa o código; não decide nada)")
     info.append(f"loss_nova média (T=12, semente 1000): media_sem_particao={float(msp['loss_nova'].dropna().mean()):.4f}, "
                 f"sem_media_k1={float(k1l['loss_nova'].dropna().mean()):.4f}, central_HT_cal2(R={R_TC})={float(ht['loss_nova'].dropna().mean()):.4f}")
+    # 3b) o alvo REAL da calibração (media_sem_particao, semente 1000, rodada 2) existe e é o esperado
+    for t in ("A", "B"):
+        ref = pasta_calib(Path(DIR_REFERENCIA)) / f"media_sem_particao_m{NIVEL_R2}_{t}_{SEMENTE_CALIB}.csv"
+        prm = ref.with_suffix(".params.json")
+        if not (ref.exists() and prm.exists()):
+            pare.append(f"alvo da calibração ausente: {ref}")
+            continue
+        tab, pj = pd.read_csv(ref), json.loads(prm.read_text())
+        if len(tab) != T_PADRAO or tab["loss_nova"].notna().sum() != 16 or pj.get("rodadas") != 75 \
+                or pj.get("particao") != "total" or pj.get("T") != T_PADRAO:
+            pare.append(f"alvo da calibração {ref.name} malformado: {len(tab)} linhas, "
+                        f"{int(tab['loss_nova'].notna().sum())} loss_nova, params {pj.get('rodadas')}/{pj.get('particao')}/{pj.get('T')}")
+            continue
+        anterior = pasta_calib(Path(DIR_REFERENCIA)) / f"calibracao_HT_{t}_m{NIVEL_R2}.json"
+        if anterior.exists() and abs(json.loads(anterior.read_text())["alvo_loss_nova_msp"] - float(tab["loss_nova"].mean())) > 1e-9:
+            pare.append(f"alvo {t} difere do alvo gravado na calibração da rodada 2")
+        info.append(f"alvo real {t}: loss_nova média do media_sem_particao (semente 1000) = {float(tab['loss_nova'].mean()):.4f}")
     # 4) sonda v2 e perdas finitas
     for (nome, suf), d in df.items():
         if len(d) >= 10 and d.loc[[4, 9], "sonda2_dlog_norm"].isna().any():
@@ -209,14 +226,18 @@ def _custo(job: tuple) -> float:
 
 
 def fase_completo(ex, dir_r2b: Path, sem_teste_curto: bool = False) -> dict:
+    """media_sem_particao e sem_media_k1 não dependem de R nem de μ: são submetidos junto com a calibração, para que
+    uma falha na calibração não os impeça. Os central_HT_cal2 entram depois da seleção de μ."""
     res = dir_r2b / "calibracao" / "teste_curto" / "RESULTADO.txt"
     if not sem_teste_curto and not (res.exists() and res.read_text().startswith("OK")):
         raise SystemExit("o teste curto não deu OK (ou não rodou): rode `--fase teste_curto` e leia RESULTADO.txt. "
                          "Para ignorar, --sem-teste-curto.")
-    tempos = fase_selecao(ex, dir_r2b)
     t0 = time.time()
     plano = sorted(plano_confirmatorio(), key=_custo, reverse=True)
-    for f in [ex.submit(job_rodar, c, tipo, sem, T, str(dir_r2b)) for c, tipo, sem, T in plano]:
+    indep = [ex.submit(job_rodar, c, tipo, sem, T, str(dir_r2b)) for c, tipo, sem, T in plano if c != "central_HT_cal2"]
+    tempos = fase_selecao(ex, dir_r2b)
+    dep = [ex.submit(job_rodar, c, tipo, sem, T, str(dir_r2b)) for c, tipo, sem, T in plano if c == "central_HT_cal2"]
+    for f in indep + dep:
         _resultado(f)
     tempos["confirmatorio_s"] = time.time() - t0
     return tempos
