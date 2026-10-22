@@ -16,7 +16,7 @@ git -C "$LOCAL_DIR" rev-parse HEAD > "$LOCAL_DIR/slurm/COMMIT"     # o job regis
 
 OPTS=(-avz --progress
       --exclude=.venv/ --exclude=.git/ --exclude=__pycache__/ --exclude='*.pyc' --exclude=.pytest_cache/
-      --exclude=logs/ --exclude=figures/ --exclude=results_v1_exploratorio/ --exclude=results_rodada2/)
+      --exclude=logs/ --exclude=figures/ --exclude=results_v1_exploratorio/ --exclude=results_rodada2/ --exclude=results_rodada2b/)
 [[ "${1:-}" == "--dry-run" ]] && { OPTS+=(--dry-run); echo "[dry-run] nada será transferido."; }
 
 echo "Enviando $LOCAL_DIR/ → $REMOTE_USER@$REMOTE_HOST:~/$REMOTE_DIR/"

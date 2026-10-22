@@ -83,6 +83,9 @@ NIVEL_R2 = 3                          # m* = 3
 SEMENTES_R2 = (6, 7, 8, 9, 10)        # sementes de avaliação da rodada 2
 SEMENTES_LONGO = (6, 7, 8)            # braço de horizonte longo
 T_LONGO = 100
+SEMENTES_R2B = (11, 12, 13, 14, 15)    # sementes de avaliação da rodada 2b (central_HT_cal2)
+R_CAL2 = tuple(range(75, 151))          # grade de R (rodadas por tarefa) da calibração do central_HT_cal2: de R a 2R, passo 1
+MUS_2B = (0.9, 0.99, 0.995, 0.999)    # grade de μ do central_HT_cal2, escolhido depois de R
 MUS = (0.5, 0.9, 0.99)                # grade de μ (central_HT e central_lookahead), escolhido na semente 1000
 ALFAS = (0.1, 1.0, 100.0)             # fedavg_dirichlet
 SONDA_PASSOS_R2 = 20                  # sonda da rodada 2 (a de 300 passos satura)

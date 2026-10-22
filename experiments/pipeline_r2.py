@@ -78,9 +78,9 @@ def _preparar_processo() -> None:
 
 
 def rodar(nome: str, tipo: str, sem: int, T: int, alfa: float | None, mu: float | None,
-          pasta: str, sufixo: str, dir_r2: str, s_local: int | None = None) -> str:
+          pasta: str, sufixo: str, dir_r2: str, s_local: int | None = None, rodadas: int | None = None) -> str:
     """Roda UMA execução (ou pula se o CSV já é válido). `pasta` é onde o CSV vai."""
-    cond = condicao_r2(nome, tipo, Path(dir_r2), T=T, alfa=alfa, mu=mu, s_local=s_local)
+    cond = condicao_r2(nome, tipo, Path(dir_r2), T=T, alfa=alfa, mu=mu, s_local=s_local, rodadas=rodadas)
     pasta = Path(pasta)
     if csv_valido(cond, tipo, sem, pasta, sufixo):
         return f"pulado {nome}{sufixo} {tipo} s{sem} (CSV válido)"

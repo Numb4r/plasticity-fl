@@ -105,15 +105,17 @@ def carregar_condicao(nome: str, tarefa: str, nivel: int, dir_res: Path) -> Cond
 
 
 def condicao_r2(nome: str, tarefa: str, dir_r2: Path, *, T: int = T_PADRAO, alfa: float | None = None,
-                mu: float | None = None, dir_r1: Path = Path("results"), s_local: int | None = None) -> Condicao:
+                mu: float | None = None, dir_r1: Path = Path("results"), s_local: int | None = None,
+                rodadas: int | None = None) -> Condicao:
     """Condições da rodada 2 (m* = 3, R = 75 rodadas, sonda de 20 passos).
 
     central_aprendizado: passos congelados da rodada 1 (A e B) ou calibrados na semente 1000 (B_fixa).
+    central_HT_cal2 (rodada 2b): rodadas R de `calibracao_HT2_<tarefa>_m3.json`, mu de `selecao_HTcal2_<tarefa>_m3.json`.
     central_HT_cal: passos locais de `calibracao_HT_<tarefa>_m3.json`, mu de `selecao_HTcal_<tarefa>_m3.json`.
     central_HT e central_lookahead: mu escolhido na semente 1000 (`selecao_<método>_<tarefa>_m3.json`),
     um por tipo de tarefa; na B_fixa vale o mu da tarefa B. `mu` explícito (testes, sanidade) o substitui.
     """
-    comum = dict(nivel=NIVEL_R2, rodadas=RODADAS_BASE * NIVEL_R2, s_local=S_LOCAL, T=T, sonda_versao=2, rodada=2)
+    comum = dict(nivel=NIVEL_R2, rodadas=rodadas or RODADAS_BASE * NIVEL_R2, s_local=S_LOCAL, T=T, sonda_versao=2, rodada=2)
     pasta = pasta_calib(dir_r2)
     tarefa_mu = "B" if tarefa == "B_fixa" else tarefa
     if nome == "fedavg_iid":
@@ -125,6 +127,14 @@ def condicao_r2(nome: str, tarefa: str, dir_r2: Path, *, T: int = T_PADRAO, alfa
     if nome == "fedavg_dirichlet":
         assert alfa is not None, "fedavg_dirichlet precisa de alfa"
         return Condicao(nome, "fl", "dirichlet", alfa=float(alfa), geral=True, **comum)
+    if nome == "central_HT_cal2":
+        # rodada 2b: S = 15 e o Adam recriado a cada rodada; o que se calibra é o nº de rodadas R por tarefa
+        calib = None if rodadas is not None else _json(pasta / f"calibracao_HT2_{tarefa}_m{NIVEL_R2}.json")
+        if mu is None:
+            mu = _json(pasta / f"selecao_HTcal2_{tarefa}_m{NIVEL_R2}.json")["mu"]
+        r = rodadas if rodadas is not None else calib["rodadas"]
+        comum_ht = {**comum, "rodadas": r}
+        return Condicao(nome, "ht", "um", mu=float(mu), calibracao_ok=True if calib is None else bool(calib["ok"]), **comum_ht)
     if nome == "central_HT_cal":
         # Hare & Tortoise com passos locais por rodada calibrados na semente 1000 (perda CE da rede nova
         # a até 10% da do media_sem_particao); μ escolhido depois, com esses passos

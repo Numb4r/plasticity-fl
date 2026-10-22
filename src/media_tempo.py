@@ -42,7 +42,7 @@ def treinar_lookahead(modelo: MLP, X, y, particoes: list[torch.Tensor], gerador,
 
 
 def treinar_ht(modelo: MLP, extra: dict, X, y, particoes: list[torch.Tensor], gerador, rodadas: int, mu: float,
-                passos: int | None = None) -> list[float]:
+                passos: int | None = None, ao_fim_de_rodada=None) -> list[float]:
     """central_HT (Hare & Tortoise de verdade). `modelo` é a LEBRE (a rede que aprende e é medida);
     `extra["tartaruga"]` é a tartaruga (state_dict), que persiste entre tarefas. No início da tarefa
     a lebre volta para a tartaruga (e só aí); em cada rodada a lebre treina 15 passos a partir de
@@ -57,4 +57,6 @@ def treinar_ht(modelo: MLP, extra: dict, X, y, particoes: list[torch.Tensor], ge
         cosenos.append(cosseno_medio([_vetor_estado(lebre) - _vetor_estado(antes)]))
         modelo.load_state_dict(lebre)
         extra["tartaruga"] = misturar(extra["tartaruga"], lebre, mu)
+        if ao_fim_de_rodada is not None:        # só leitura (calibração do R): recebe a lebre e o nº de rodadas feitas
+            ao_fim_de_rodada(modelo, len(cosenos))
     return cosenos
