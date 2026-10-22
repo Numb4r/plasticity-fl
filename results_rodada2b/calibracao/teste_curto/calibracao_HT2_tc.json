@@ -1,0 +1,24 @@
+{
+ "tarefa": "A",
+ "alvo_loss_nova_msp": 0.9026550906045097,
+ "rodadas": 80,
+ "loss_ht": 0.8015396254403251,
+ "erro_rel": -0.11202004643486518,
+ "ok": false,
+ "tolerancia": 0.1,
+ "grade": [
+  80,
+  84
+ ],
+ "alvo_fora_do_alcance": true,
+ "versao_dados": 2,
+ "referencia": "results_rodada2b/calibracao/teste_curto/sem_media_k1_tc_m3_A_1000.csv",
+ "referencia_sha256": "10691dbf16cdaaf46d80024479c4cd6be1fba6427212e209c35ee0939966c863",
+ "tentativas": {
+  "80": 0.8015396254403251,
+  "81": 0.7770507420812335,
+  "82": 0.7628445114408221,
+  "83": 0.7484945740018573,
+  "84": 0.7333698783602033
+ }
+}

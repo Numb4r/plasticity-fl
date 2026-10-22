@@ -1,0 +1,7 @@
+OK
+INFO: sanidade μ=0 (R=80): idêntico ao sem_media_k1
+INFO: acc_cont média das 3 últimas tarefas (T=12): central_HT_cal2(R=80, μ=0,99)=0.936, acc_tartaruga=0.479, sem_media_k1(R=75)=0.833
+INFO: calibração HT2 em miniatura (T=12, R 80..84, alvo = loss_nova do k1): R=80 erro_rel=-0.112 (só testa o código; não decide nada)
+INFO: loss_nova média (T=12, semente 1000): media_sem_particao=0.7046, sem_media_k1=0.9027, central_HT_cal2(R=80)=0.8099
+INFO: alvo real A: loss_nova média do media_sem_particao (semente 1000) = 0.7079
+INFO: alvo real B: loss_nova média do media_sem_particao (semente 1000) = 0.1411
