@@ -21,8 +21,8 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 case "$RODADA" in
-    2)  PASTA="results_rodada2";  MODULO="experiments.verificar_rodada2";  PADRAO="slurm-r2_completo-*.out" ;;
-    2b) PASTA="results_rodada2b"; MODULO="experiments.verificar_rodada2b"; PADRAO="slurm-r2b_completo-*.out" ;;
+    2)  MARCA="calibração B_fixa"; PASTA="results_rodada2";  MODULO="experiments.verificar_rodada2";  PADRAO="slurm-r2_longo-*.out slurm-r2_completo-*.out" ;;
+    2b) MARCA="calibração central_HT_cal2"; PASTA="results_rodada2b"; MODULO="experiments.verificar_rodada2b"; PADRAO="slurm-r2b_longo-*.out slurm-r2b_completo-*.out" ;;
     *)  echo "rodada inválida: $RODADA" >&2; exit 2 ;;
 esac
 
@@ -31,7 +31,11 @@ if [[ $BUSCAR -eq 1 ]]; then
 fi
 
 if [[ -z "$LOG" ]]; then
-    LOG="$(ls -t logs/cluster/$PADRAO 2>/dev/null | head -1)"
+    # o log mais recente que TERMINOU (tem a linha 'tempos:'); se nenhum terminou, o mais recente de todos
+    for f in $(cd logs/cluster 2>/dev/null && ls -t $PADRAO 2>/dev/null); do
+        [[ -z "$LOG" ]] && LOG="logs/cluster/$f"
+        if grep -q "tempos:" "logs/cluster/$f" && grep -q "$MARCA" "logs/cluster/$f"; then LOG="logs/cluster/$f"; break; fi
+    done
 fi
 if [[ -z "$LOG" || ! -f "$LOG" ]]; then
     echo "Não achei o log do completo em logs/cluster/. Rode com --buscar ou passe o caminho do log." >&2

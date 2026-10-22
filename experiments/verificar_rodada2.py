@@ -29,6 +29,8 @@ def verificar(dir_r2: Path, log: Path | None) -> list[str]:
                 erros.append("o log tem Traceback ou ERROR")
             if re.search(r"\bPARE\b", txt):
                 erros.append("o log tem aviso PARE")
+            if "calibração B_fixa" not in txt:
+                erros.append("o log não é do completo da rodada 2 (falta a linha 'calibração B_fixa'); passe o log certo")
             if "tempos:" not in txt:
                 erros.append("o log não chegou à linha final 'tempos:' (o completo não terminou)")
     res = dir_r2 / "calibracao" / "teste_curto" / "RESULTADO.txt"
