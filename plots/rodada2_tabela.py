@@ -20,6 +20,7 @@ ESTILOS = {
     "sem_media_k1": dict(color="#d55e00", linestyle="--", marker="s"),
     "central_aprendizado": dict(color="#cc79a7", linestyle=(0, (5, 1)), marker="v"),
     "central_HT": dict(color="#009e73", linestyle=":", marker="D"),
+    "central_HT_cal": dict(color="#117733", linestyle=(0, (1, 2, 5, 2)), marker="d"),
     "central_lookahead": dict(color="#e69f00", linestyle=(0, (3, 1, 1, 1)), marker="P"),
     "fedavg_dirichlet_a0.1": dict(color="#882255", linestyle=(0, (1, 1)), marker="X"),
     "fedavg_dirichlet_a1": dict(color="#56b4e9", linestyle=(0, (4, 2, 1, 2)), marker="*"),
@@ -216,28 +217,74 @@ def md_metrica(df):
     return L
 
 
-def md_h_tempo(df):
-    ht = R.h_tempo(df)
-    L = ["## 2. H_tempo / H_dist (central_HT contra media_sem_particao)", "",
-         f"**Veredito: {ht['veredito']}**", ""]
-    L += ["| tarefa | P_vant: inf(msp) > sup(k1) | perda CE nova HT / msp (rel.) | elegível (≤10%) | "
-          "acc nova HT − msp (checagem ±0,03) | d = HT − msp, IC | classe de d (δ=0,02) |", "|---|---|---|---|---|---|---|"]
+def _mu(sel):
+    if not sel:
+        return "n/d"
+    return f"{sel['mu']:g}" + (" [borda]" if sel.get("borda") else "")
+
+
+def md_calibracao(calib):
+    L = ["### Calibração do central_HT_cal (semente 1000) e μ escolhidos", "",
+         "S = passos locais por rodada (múltiplo de 15); erro_rel = |loss_ht − alvo| / alvo, com alvo = `loss_nova` "
+         "do media_sem_particao; ok = erro_rel ≤ 10%. μ do central_HT_cal (com esse S), do central_HT (15 passos) e "
+         "do central_lookahead; [borda] = escolhido na borda da grade (mantido).", "",
+         "| tarefa | S (passos locais/rodada) | erro_rel | ok | alvo (loss_nova msp) | loss_ht | μ central_HT_cal | "
+         "μ central_HT | μ central_lookahead |", "|---|---|---|---|---|---|---|---|---|"]
+    for t in R.TIPOS_AB:
+        c = (calib or {}).get(t, {})
+        k = c.get("calibracao")
+        if k:
+            cel = [str(k.get("passos_locais", "n/d")), f3(k.get("erro_rel")), str(k.get("ok")),
+                   f3(k.get("alvo_loss_nova_msp")), f3(k.get("loss_ht"))]
+        else:
+            cel = [f"n/d (falta calibracao_HT_{t}_m3.json)", "n/d", "n/d", "n/d", "n/d"]
+        L.append(f"| {t} | " + " | ".join(cel) + f" | {_mu(c.get('sel_HTcal'))} | {_mu(c.get('sel_HT'))} | "
+                 f"{_mu(c.get('sel_lookahead'))} |")
+    return L
+
+
+def _linha_expl(titulo, ex):
+    L = [f"| tarefa | d = {titulo}, IC (gap) | mesma d em acc_cont | d por semente (gap) |", "|---|---|---|---|"]
+    for t in R.TIPOS_AB:
+        x = ex[t]
+        if x["falta"]:
+            L.append(f"| {t} | não avaliável ({x['falta']}) | n/d | n/d |")
+            continue
+        ps = ", ".join(f"{s}: {f3(v)}" for s, v in x["por_semente"].items())
+        L.append(f"| {t} | {ic(x['d'])} | {ic(x['d_acc_cont'])} | {ps} |")
+    return L
+
+
+def md_h_tempo(df, calib):
+    ht = R.h_tempo(df, calib)
+    L = ["## 2. H_tempo / H_dist (central_HT_cal contra media_sem_particao)", "",
+         f"**Veredito (H_tempo e H_dist, o mesmo): {ht['veredito']}**", ""]
+    if not ht["calib_checada"]:
+        L += ["(a checagem da calibração não foi feita: JSONs não lidos)", ""]
+    L += md_calibracao(calib) + [""]
+    L += ["| tarefa | P_vant: inf(msp) > sup(k1) | perda CE nova central_HT_cal / msp (rel.) | elegível (≤10%) | "
+          "acc nova HT_cal − msp (checagem ±0,03) | d = central_HT_cal − msp, IC | classe de d (δ=0,02) |",
+          "|---|---|---|---|---|---|---|"]
     for t in R.TIPOS_AB:
         x = ht["tarefas"][t]
         L.append(f"| {t} | {x['p_vant']} (msp {ic(x['msp'])}; k1 {ic(x['k1'])}) | "
                  f"{f3(x['loss_ht'])} / {f3(x['loss_msp'])} ({f3(x['rel_ce'])}) | {x['ce_ok']} | "
                  f"{f3(x['dacc'])} ({x['acc_ok']}) | {ic(x['d'])} | {x['classe']} |")
-    L += ["", "Critério secundário (literal; sem veredito): média do central_HT dentro do IC de "
-          "media_sem_particao; inf(IC msp) acima do sup(IC HT).", "",
-          "| tarefa | HT dentro do IC de msp | inf(msp) > sup(HT) |", "|---|---|---|"]
+    L += ["", "Critério secundário (literal; sem veredito): média do central_HT_cal dentro do IC de "
+          "media_sem_particao; inf(IC msp) acima do sup(IC central_HT_cal).", "",
+          "| tarefa | central_HT_cal dentro do IC de msp | inf(msp) > sup(central_HT_cal) |", "|---|---|---|"]
     for t in R.TIPOS_AB:
         x = ht["tarefas"][t]
         L.append(f"| {t} | {x['sec_dentro']} | {x['sec_acima']} |")
-    L += ["", "central_lookahead (exploratório, sem veredito): diferença pareada contra media_sem_particao.", "",
-          "| tarefa | d = lookahead − msp, IC |", "|---|---|"]
-    for t in R.TIPOS_AB:
-        x = ht["lookahead"][t]
-        L.append(f"| {t} | {ic(x['d']) if not x['falta'] else 'não avaliável (' + x['falta'] + ')'} |")
+    L += ["", "### Exploratórios (sem veredito, não entram em H_tempo nem em H_dist)", "",
+          "**(a) central_HT (15 passos, SEM calibração) contra media_sem_particao** (mesma diferença pareada d e IC; "
+          "a rede nova do central_HT aprende em outro nível que a do msp).", ""]
+    L += _linha_expl("central_HT − msp", ht["expl_ht_msp"])
+    L += ["", "**(b) central_HT − sem_media_k1** por tarefa e semente (a rede nova é a mesma; gap = acc_cont − acc_nova, "
+          "então a diferença de gap é a de acc_cont).", ""]
+    L += _linha_expl("central_HT − k1", ht["expl_ht_k1"])
+    L += ["", "**(c) central_lookahead** contra media_sem_particao.", ""]
+    L += _linha_expl("lookahead − msp", ht["lookahead"])
     return L, ht
 
 
@@ -259,6 +306,8 @@ def md_h_het(df):
 def md_rank(df):
     L = ["## 4. Rank das ativações (exploratório; SEM critério e SEM veredito)", "",
          "`rank_ef` e `srank_feat` sempre juntos (média das 5 últimas tarefas; média entre sementes e IC 95%). "
+         "Grupo \"com média\": fedavg_iid, media_sem_particao, central_HT_cal, fedavg_dirichlet; \"sem média\": "
+         "sem_media_k1, central_aprendizado; central_HT e central_lookahead aparecem à parte, fora dos grupos. "
          "As duas medidas discordaram na rodada 1 (tarefa A, m=3: rank_ef do fedavg_iid 6,3, abaixo de "
          "central_aprendizado 9,8; srank_feat do fedavg_iid 63, acima de 19,6), e o autor já viu esses números.", "",
          "| tarefa | condição / grupo | rank_ef | srank_feat |", "|---|---|---|---|"]
@@ -313,17 +362,26 @@ def md_longo(df):
                 f"{x['mediana']:g} [{x['minimo']}, {x['maximo']}]"
             L.append(f"| {t} | {c} | {gm} | {por} | {med} | {x['frac_sem']:.2f} |")
     j = R.julgar_horizonte(col)
-    L += ["", f"**Julgamento da previsão do autor (tarefa A): {j}**"]
+    L += ["", f"**Julgamento do horizonte (tarefa A), regra já confirmada (mediana só entre as sementes que colapsaram): {j}**",
+          "", f"{R.ROTULO_PROPOSTA}: com \"sem colapso\" como censura à direita e mediana nas 3 sementes: "
+          f"**{R.julgar_horizonte_proposta(col)}**"]
     return L, col, j
 
 
-def md_previsao(ht, hh, j):
-    L = ["## 8. Previsão do autor × resultado (calculado, sem interpretar)", "",
-         "| hipótese | previsão do autor | resultado calculado |", "|---|---|---|",
-         f"| H_tempo | não (HT protege mais que a média entre aprendizes) | {ht['veredito']} |",
-         f"| H_dist | não | {ht['veredito']} |",
-         f"| H_het | sim (gap piora quando α diminui) | {hh['geral']} |",
-         f"| horizonte longo | o FedAvg só atrasa a perda | {j} |"]
+def md_previsao(ht, hh, col):
+    """Previsão literal do autor ao lado do veredito. Regras de julgamento: PROPOSTA, aguarda confirmação."""
+    itens = R.julgar_previsao(ht, hh, col)
+    L = ["## 8. Previsão do autor × resultado (calculado)", "",
+         f"Previsão literal do autor (commit `ab3c8ab`): \"{R.PREVISAO_LITERAL}\". Pelo esclarecimento de "
+         "2026-10-21, o \"central_HT\" da previsão é o central_HT_cal.", "",
+         f"**Julgamento: {R.ROTULO_PROPOSTA}.** Regras propostas: (1) H_tempo/H_dist acerta só se o veredito geral for "
+         "\"HT acima\"; \"misto\" com \"HT acima\" numa tarefa = acerto parcial; \"não avaliável\" não conta; "
+         "(2) H_tempo e H_dist são um só item; (3) horizonte: \"sem colapso\" = censura à direita (> T), mediana nas "
+         "3 sementes, empate não é \"mais tarde\"; (4) H_het: \"atendida\" = acerto (confirmado), \"parcial\" = "
+         "acerto parcial, ordem certa com IC passando por 0 = erro.", "",
+         "| item | previsão do autor (literal) | veredito calculado | julgamento (PROPOSTA) |", "|---|---|---|---|"]
+    for x in itens:
+        L.append(f"| {x['item']} | {x['previsao']} | {x['calculado']} | {x['julgamento']} |")
     return L
 
 
@@ -336,7 +394,8 @@ def gerar(results, saida):
         return 1
     rea = R.carregar_reaprendizado(results)
     os.makedirs(saida, exist_ok=True)
-    corpo_t, ht = md_h_tempo(df)
+    calib = R.carregar_calibracao(results)
+    corpo_t, ht = md_h_tempo(df, calib)
     corpo_h, hh = md_h_het(df)
     corpo_l, col, j = md_longo(df)
     L = ["# Tabela de decisão da rodada 2", "",
@@ -344,7 +403,7 @@ def gerar(results, saida):
          "(rodada 2 e blocos de 2026-10-21); ambiguidades em `plots/rodada2_analise.py`. "
          "Vereditos: texto calculado, sem interpretação.", ""]
     L += md_metrica(df) + [""] + corpo_t + [""] + corpo_h + [""] + md_rank(df) + [""] + md_sonda(df) + [""]
-    L += md_bfixa(df, rea) + [""] + corpo_l + [""] + md_previsao(ht, hh, j) + [""]
+    L += md_bfixa(df, rea) + [""] + corpo_l + [""] + md_previsao(ht, hh, col) + [""]
     with open(os.path.join(saida, "rodada2_tabela_decisao.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
     gerados = [fig_gap(df, saida), fig_het(df, saida), fig_longo(df, col, saida),

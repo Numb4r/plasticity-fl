@@ -34,10 +34,13 @@ def verificar(dir_r2: Path, log: Path | None) -> list[str]:
     res = dir_r2 / "calibracao" / "teste_curto" / "RESULTADO.txt"
     if not (res.exists() and res.read_text().startswith("OK")):
         erros.append("teste curto sem RESULTADO.txt OK")
-    for m in ("HT", "lookahead"):
+    for m in ("HT", "lookahead", "HTcal"):
         for t in ("A", "B"):
             if not (dir_r2 / "calibracao" / f"selecao_{m}_{t}_m3.json").exists():
                 erros.append(f"falta selecao_{m}_{t}_m3.json")
+    for t in ("A", "B"):
+        if not (dir_r2 / "calibracao" / f"calibracao_HT_{t}_m3.json").exists():
+            erros.append(f"falta calibracao_HT_{t}_m3.json")
     if not (dir_r2 / "calibracao" / "calibracao_B_fixa_m3.json").exists():
         erros.append("falta calibracao_B_fixa_m3.json")
     plano = plano_confirmatorio() + plano_longo()
@@ -59,7 +62,7 @@ def verificar(dir_r2: Path, log: Path | None) -> list[str]:
         sonda = d.loc[[t for t in range(T) if t % 5 == 4], "sonda2_dlog_norm"]
         if sonda.isna().any():
             erros.append(f"{f.name}: sonda v2 sem valor em tarefa de sonda")
-        if cond == "central_HT" and d["acc_tartaruga"].isna().any():
+        if cond in ("central_HT", "central_HT_cal") and d["acc_tartaruga"].isna().any():
             erros.append(f"{f.name}: acc_tartaruga faltando")
         if cond == "fedavg_dirichlet" and d["part_max"].isna().any():
             erros.append(f"{f.name}: partições Dirichlet não registradas")
@@ -72,6 +75,29 @@ def verificar(dir_r2: Path, log: Path | None) -> list[str]:
     return erros, len(plano)
 
 
+def resumo_calibracoes(dir_r2: Path) -> list[str]:
+    """Linhas informativas (não são erro): μ escolhidos, borda e a calibração do central_HT_cal.
+    Calibração fora da tolerância é um RESULTADO (H_tempo/H_dist 'não avaliável'), não uma falha."""
+    pasta, linhas = dir_r2 / "calibracao", []
+    for t in ("A", "B"):
+        arq = pasta / f"calibracao_HT_{t}_m3.json"
+        if arq.exists():
+            c = json.loads(arq.read_text())
+            linhas.append(f"calibração central_HT_cal {t}: S={c['passos_locais']} passos locais/rodada, erro_rel={c['erro_rel']:+.3f}, "
+                          f"ok={c['ok']}" + ("" if c["ok"] else "  <-- FORA DA TOLERÂNCIA (H_tempo e H_dist: não avaliável)"))
+    for m in ("HT", "lookahead", "HTcal"):
+        for t in ("A", "B"):
+            arq = pasta / f"selecao_{m}_{t}_m3.json"
+            if arq.exists():
+                s = json.loads(arq.read_text())
+                linhas.append(f"μ {m} {t}: {s['mu']:g}" + ("  [BORDA]" if s["borda"] else ""))
+    arq = pasta / "calibracao_B_fixa_m3.json"
+    if arq.exists():
+        c = json.loads(arq.read_text())
+        linhas.append(f"calibração central_aprendizado B_fixa: passos={c['passos']} ok={c['ok']}")
+    return linhas
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--saida", default=DIR_PADRAO)
@@ -80,6 +106,8 @@ def main() -> None:
     erros, n = verificar(Path(a.saida), Path(a.log) if a.log else None)
     tempo = Path(a.saida) / "tempo_completo.json"
     print(f"execuções esperadas: {n}")
+    for linha in resumo_calibracoes(Path(a.saida)):
+        print(linha)
     if tempo.exists():
         print("tempos:", json.loads(tempo.read_text()))
     if erros:

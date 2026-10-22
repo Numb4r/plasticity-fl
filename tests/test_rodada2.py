@@ -290,6 +290,73 @@ def test_braco_longo_so_tem_rede_nova_em_t_mod_3_e_nas_5_ultimas(tmp_path):
     assert df["sonda2_dlog_norm"].notna().sum() == len([t for t in range(40) if t % 5 == 4])
 
 
+# ---------- central_HT_cal: passos locais calibrados ----------
+
+def test_treino_local_com_passos_faz_o_numero_pedido_e_o_padrao_nao_muda(monkeypatch):
+    contagem = {"n": 0, "novos": 0}
+    original, original_init = torch.optim.Adam.step, torch.optim.Adam.__init__
+
+    def contando(self, *a, **k):
+        contagem["n"] += 1
+        return original(self, *a, **k)
+
+    def init_contando(self, *a, **k):
+        contagem["novos"] += 1
+        return original_init(self, *a, **k)
+
+    monkeypatch.setattr(torch.optim.Adam, "step", contando)
+    monkeypatch.setattr(torch.optim.Adam, "__init__", init_contando)
+    X, y = _dados()
+    todos = torch.arange(len(X))
+    local, estado = MLP(), criar_mlp(semente(1, "init_continua")).state_dict()
+    treino_local(local, estado, X, y, todos, gerador(1, "embaralha_continua", 0))
+    assert (contagem["n"], contagem["novos"]) == (15, 1)
+    contagem.update(n=0, novos=0)
+    treino_local(local, estado, X, y, todos, gerador(1, "embaralha_continua", 0), passos=45)
+    assert (contagem["n"], contagem["novos"]) == (45, 3)                      # Adam recriado a cada 15 passos
+
+
+def test_ht_cal_com_15_passos_e_o_central_ht_bit_a_bit_e_com_30_passos_muda():
+    base = replace(_cond_k1(), nome="central_HT", familia="ht", mu=0.9)
+    ht = cs.executar(base, "A", 1, Path(tempfile.mkdtemp()), diagnosticos=False)
+    cal15 = cs.executar(replace(base, nome="central_HT_cal", s_local=15), "A", 1, Path(tempfile.mkdtemp()), diagnosticos=False)
+    cols = [c for c in ht.columns if c not in ("cond",)]
+    pd.testing.assert_frame_equal(ht[cols], cal15[cols], check_exact=True)
+    cal30 = cs.executar(replace(base, nome="central_HT_cal", s_local=30), "A", 1, Path(tempfile.mkdtemp()), diagnosticos=False)
+    assert not ht["loss_nova"].dropna().equals(cal30["loss_nova"].dropna())  # o S age na rede nova (e na contínua)
+    assert not ht["loss_cont"].equals(cal30["loss_cont"])
+
+
+def test_condicao_r2_central_ht_cal_le_calibracao_e_mu(tmp_path):
+    pasta = tmp_path / "calibracao"
+    pasta.mkdir(parents=True)
+    (pasta / "calibracao_HT_A_m3.json").write_text(json.dumps({"passos_locais": 60, "ok": False}))
+    (pasta / "selecao_HTcal_A_m3.json").write_text(json.dumps({"mu": 0.99}))
+    c = cs.condicao_r2("central_HT_cal", "A", tmp_path)
+    assert (c.familia, c.s_local, c.mu, c.calibracao_ok, c.rodadas) == ("ht", 60, 0.99, False, 75)
+    c = cs.condicao_r2("central_HT_cal", "A", tmp_path, mu=0.5, s_local=30)           # explícito (teste curto) não lê JSON
+    assert (c.s_local, c.mu) == (30, 0.5)
+
+
+def test_calibrar_ht_escolhe_o_s_de_menor_erro_relativo_e_marca_ok(tmp_path, monkeypatch):
+    from experiments import calibrar_ht as ch
+    ref = tmp_path / "msp.csv"
+
+    def calibrar(alvo):
+        pd.DataFrame({"loss_nova": [alvo] * 3}).to_csv(ref, index=False)           # T=3: refs t=0..2 (3 últimas)
+        return ch.calibrar_ht("A", tmp_path, T=3, passos_max=2 * 75 * 15, referencia=ref, saida=tmp_path / "c.json")
+
+    r = calibrar(1000.0)                                                           # alvo enorme: o S de maior perda (15)
+    assert r["passos_locais"] == 15 and r["ok"] is False and r["alvo_fora_do_alcance"] is False
+    perdas = {int(k): v for k, v in r["tentativas"].items()}
+    assert set(perdas) == {15, 30} and perdas[30] < perdas[15]                     # mais passos, menos perda
+    r = calibrar(1e-9)                                                             # alvo inalcançável: o S máximo, fora do alcance
+    assert r["passos_locais"] == 30 and r["ok"] is False and r["alvo_fora_do_alcance"] is True
+    r = calibrar(perdas[30] * 1.05)                                                # 5% acima da perda em S=30: S=30, ok
+    assert r["passos_locais"] == 30 and r["ok"] is True and abs(r["erro_rel"] + 0.0476) < 0.01
+    assert json.loads((tmp_path / "c.json").read_text())["passos_locais"] == 30
+
+
 # ---------- condições, seleção de μ, plano, gate e verificação ----------
 
 def test_condicao_r2_le_passos_da_rodada_1_e_mu_da_selecao(tmp_path):
@@ -324,21 +391,28 @@ def test_escolher_mu_maior_acuracia_empate_menor_e_borda(tmp_path):
     fake([0.8, 0.8, 0.5])                                                               # empate: o menor
     assert p.escolher_mu("HT", "A", tmp_path)["mu"] == 0.5
     assert json.loads((tmp_path / "calibracao" / "selecao_HT_A_m3.json").read_text())["mu"] == 0.5
+    for mu, a in zip(config.MUS, [0.5, 0.6, 0.9]):                                      # método HTcal: arquivos e JSON próprios
+        pd.DataFrame({"acc_cont": [a] * 30}).to_csv(pasta / f"central_HT_cal_mu{mu:g}_m3_A_1000.csv", index=False)
+    assert p.escolher_mu("HTcal", "A", tmp_path)["mu"] == 0.99
+    assert (tmp_path / "calibracao" / "selecao_HTcal_A_m3.json").exists()
 
 
 def test_plano_da_rodada_2_tem_as_execucoes_do_pre_registro():
     import experiments.pipeline_r2 as p
     conf, longo = p.plano_confirmatorio(), p.plano_longo()
-    assert len(conf) == 115 and len(longo) == 30
+    assert len(conf) == 125 and len(longo) == 30
     nomes = [p.nome_csv(j) for j in conf + longo]
     assert len(set(nomes)) == len(nomes)                                                 # sem colisão de arquivos
     assert {j[2] for j in conf} == {6, 7, 8, 9, 10} and {j[2] for j in longo} == {6, 7, 8}
     assert sum(1 for j in conf if j[0] == "fedavg_dirichlet") == 30 and {j[1] for j in conf if j[0] == "fedavg_dirichlet"} == {"A", "B"}
     assert {j[4] for j in conf if j[0] == "fedavg_dirichlet"} == {0.1, 1.0, 100.0}
+    assert sum(1 for j in conf if j[0] == "central_HT_cal") == 10 and {j[1] for j in conf if j[0] == "central_HT_cal"} == {"A", "B"}
+    assert not any(j[0] == "central_HT_cal" for j in longo)                           # braço longo e B_fixa seguem com central_HT
     assert sum(1 for j in conf if j[1] == "B_fixa") == 25 and any(j[:2] == ("central_HT", "B_fixa") for j in conf)
     assert not any(j[0] == "central_lookahead" and j[1] == "B_fixa" for j in conf)
     assert all(j[3] == 100 and j[0] != "central_lookahead" for j in longo) and "fedavg_dirichlet_a0.1_m3_A_6.csv" in nomes
-    assert 3.0 < p.estimar()["cpu_horas"] < 25
+    lo, hi = p.estimar()["cpu_horas"]
+    assert 3.0 < lo < hi < 40
 
 
 def test_completo_recusa_comecar_sem_teste_curto_ok(tmp_path):
@@ -355,7 +429,7 @@ def test_completo_recusa_comecar_sem_teste_curto_ok(tmp_path):
 def test_verificador_acusa_o_que_falta_e_nao_quebra(tmp_path):
     import experiments.verificar_rodada2 as v
     erros, n = v.verificar(tmp_path, None)
-    assert n == 145 and any("falta fedavg_iid_m3_A_6.csv" in e for e in erros) and any("teste curto" in e for e in erros)
+    assert n == 155 and any("falta fedavg_iid_m3_A_6.csv" in e for e in erros) and any("teste curto" in e for e in erros)
     log = tmp_path / "log.txt"
     log.write_text("INFO ok\nPARE: central_HT não aprende\n")
     erros, _ = v.verificar(tmp_path, log)

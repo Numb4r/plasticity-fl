@@ -29,7 +29,7 @@ def _vetor_estado(estado: dict) -> torch.Tensor:
 
 
 def treino_local(
-    modelo_local: MLP, estado_global: dict, X, y, indices, gerador, geral: bool = False
+    modelo_local: MLP, estado_global: dict, X, y, indices, gerador, geral: bool = False, passos: int | None = None
 ) -> dict:
     """Um cliente numa rodada: parte do modelo global e faz S_LOCAL=15 passos, batch 20.
 
@@ -42,7 +42,9 @@ def treino_local(
     if geral:        # clientes de tamanho qualquer (Dirichlet, rodada 2); caminho separado
         treinar_passos_geral(modelo_local, X, y, indices, S_LOCAL, BATCH, gerador)
     else:
-        treinar_passos(modelo_local, X, y, indices, S_LOCAL, BATCH, S_LOCAL, gerador)
+        # `passos` (só o central_HT_cal): rodada mais longa, com o Adam recriado a cada S_LOCAL passos;
+        # com o padrão (S_LOCAL passos) a chamada é idêntica à da rodada 1
+        treinar_passos(modelo_local, X, y, indices, passos or S_LOCAL, BATCH, S_LOCAL, gerador)
     return {k: v.detach().clone() for k, v in modelo_local.state_dict().items()}
 
 

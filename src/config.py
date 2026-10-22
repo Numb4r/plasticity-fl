@@ -36,6 +36,7 @@ PASSOS_CLIENTE = RODADAS_BASE * S_LOCAL       # 375 passos por tarefa no nível 
 RESET_CENTRAL = S_LOCAL                       # nos centralizados, o Adam é recriado no mesmo ritmo
 PASSOS_MAX_CALIB = 15000                      # teto da varredura de calibração (300 épocas)
 TOLERANCIA_CALIB = 0.03
+TOLERANCIA_HT_CAL = 0.10                      # central_HT_cal: perda CE da rede nova a até 10% (relativo) da do media_sem_particao
 LIMITE_ESQUECIMENTO = 0.05                    # Adendo 1: 5 pontos percentuais
 
 # --- sonda de alvos aleatórios (Lyle et al., 2022) ---

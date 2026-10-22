@@ -4,12 +4,17 @@ e o bloco datado de 2026-10-21 "Rodada 2: hash da previsão, aprovações e ajus
 Não altera nada da rodada 1: só importa `analise.bootstrap_ic` (bootstrap percentil, 10 000, default_rng(0)).
 CLI: `python plots/rodada2_analise.py --results results_rodada2` imprime os vereditos (sem figuras).
 
-AMBIGUIDADES do PREREGISTRO.md e como foram codificadas (texto literal onde existe; o resto está aqui):
- 1. Elegibilidade do central_HT (perda): L = média entre sementes das médias por semente de `loss_nova` nas
-    tarefas de referência (gap definido) da janela principal; |L_HT-L_msp|/L_msp <= 0,10 (fechado), por tipo
+AMBIGUIDADES do PREREGISTRO.md e como foram codificadas (texto literal onde existe; o resto está aqui).
+A condição de H_tempo e H_dist é `central_HT_cal` (bloco de 2026-10-21 "esclarecimento de desenho"); `central_HT`
+(15 passos, sem calibração) e `central_lookahead` são exploratórios, sem veredito:
+ 1. Elegibilidade do central_HT_cal (perda): L = média entre sementes das médias por semente de `loss_nova` nas
+    tarefas de referência (gap definido) da janela principal; |L_HT_cal-L_msp|/L_msp <= 0,10 (fechado), por tipo
     de tarefa (A e B); falhar em qualquer tipo torna H_tempo/H_dist "não avaliável". Acurácia +-0,03: só reportada.
- 2. Ordem das condições de "não avaliável": falta de dado > P_vant e elegibilidade (as duas falhas são listadas
-    juntas se ocorrerem as duas). O texto não diz qual vem primeiro.
+    Segundo filtro: vale depois da calibração (calibracao_HT_{A,B}_m3.json, ok=false = "calibração não atingida").
+ 2. Ordem das condições de "não avaliável": falta de dado (CSV do central_HT_cal, de media_sem_particao e de
+    sem_media_k1, ou o JSON de calibração) > calibração não atingida > P_vant e elegibilidade. Todos os motivos
+    que se aplicam são listados; com calibração não atingida e nada mais, o veredito é exatamente
+    "não avaliável (calibração não atingida)" para H_tempo e para H_dist (são o mesmo veredito).
  3. Equivalência: "IC inteiro em [-d,+d]" = inf >= -d e sup <= +d (fechado); "HT acima" = inf > +d (estrito);
     H_dist = sup < -d (estrito). Por tarefa: dentro / acima / abaixo / intermediário; geral: os dois iguais ->
     esse veredito ("intermediário" quando as duas são intermediárias); diferentes -> "misto".
@@ -20,9 +25,10 @@ AMBIGUIDADES do PREREGISTRO.md e como foram codificadas (texto literal onde exis
  6. H_het, veredito geral: se uma das tarefas for "não avaliável (falta ...)" o geral é "não avaliável"; "parcial"
     = exatamente uma tarefa atendida (a outra pode ser inconclusiva, reversa ou não atendida).
  7. H_het (3) "oposta": gap(100) < gap(1) < gap(0,1) estrito e sup do IC pareado de gap(100)-gap(0,1) < 0.
-    Qualquer outra configuração (ex.: não monotônica) = "não atendida".
- 8. Rank: o grupo "com média" tem 5 condições (fedavg_dirichlet entra UMA vez, pooled nos 3 alfas);
-    valor de grupo por semente = média das condições do grupo presentes naquela semente. Rank vale para as
+    Qualquer outro caso = "não atendida" (inclui a ordem prevista ou a oposta com o IC pareado passando por 0).
+ 8. Rank (exploratório): o grupo "com média" tem 4 condições (fedavg_iid, media_sem_particao, central_HT_cal e
+    fedavg_dirichlet, esta UMA vez, pooled nos 3 alfas); central_HT e central_lookahead aparecem à parte, FORA do
+    grupo; valor de grupo por semente = média das condições do grupo presentes naquela semente. Rank vale para as
     tarefas A e B, 5 últimas tarefas (todas, não só referências).
  9. Sonda: a mediana de dlog_norm é recalculada dos 12 Lc/Ln; dlog_raw vem da coluna sonda2_dlog_raw (o CSV
     guarda a estatística exploratória pronta). Média por semente nas tarefas com sonda (colunas não-NaN).
@@ -31,16 +37,26 @@ AMBIGUIDADES do PREREGISTRO.md e como foram codificadas (texto literal onde exis
     é censurada, n/d). '> 1500' quando MAIS da metade é censurada (estrito). Fração "no limiar no passo 0" =
     passos == 0.
 11. Colapso: média móvel de 3 referências (t%3==2) consecutivas <= -0,10 (com tolerância 1e-12); exige as 33
-    referências da semente (senão "falta"). Mediana [mín, máx] só entre as sementes que colapsaram; fração sem
-    colapso entre todas.
-12. Julgamento da previsão do autor (tarefa A): uma condição "colapsa" se pelo menos uma semente colapsa;
-    "impede" exige que sem_media_k1 e central_aprendizado colapsem nesse sentido; "só atrasa" compara a mediana
-    (entre sementes que colapsaram) do fedavg_iid com as medianas das duas; se uma delas não colapsou, "outro".
+    referências da semente (senão "falta"). Mediana [mín, máx] só entre as sementes que colapsaram (DESCRITIVA);
+    fração sem colapso entre todas.
+12. Julgamento do horizonte longo (tarefa A), regra confirmada pelo autor: uma condição "colapsa" se pelo menos
+    uma semente colapsa; "impede" exige que sem_media_k1 e central_aprendizado colapsem nesse sentido e que nenhuma
+    semente do fedavg_iid colapse; "só atrasa" compara a mediana (entre sementes que colapsaram) do fedavg_iid com
+    as das duas; se uma delas não colapsou, "outro". (`julgar_horizonte`.) A versão PROPOSTA (censura à direita,
+    mediana nas 3 sementes) está no item 15.
 13. Mesma semente em duas condições -> diferença pareada por semente na interseção das sementes.
-14. Critério secundário literal: média do central_HT dentro do IC de media_sem_particao (fechado) e
-    inf(IC msp) > sup(IC HT) (estrito); reportado, sem veredito.
+14. Critério secundário literal: média do central_HT_cal dentro do IC de media_sem_particao (fechado) e
+    inf(IC msp) > sup(IC HT_cal) (estrito); reportado, sem veredito. Exploratórios, sem veredito: (a) central_HT
+    (15 passos) contra media_sem_particao; (b) central_HT - sem_media_k1 por tarefa e semente (a rede nova é a
+    mesma, então a diferença de gap é a de acc_cont); (c) central_lookahead contra media_sem_particao.
+15. PROPOSTA, aguarda confirmação do autor (`julgar_previsao`): (1) H_tempo/H_dist é um só item; a previsão acerta
+    só se o veredito geral for "HT acima"; "misto" com "HT acima" em uma tarefa = acerto parcial; "não avaliável"
+    não conta. (2) H_het: "atendida" = acerto (confirmado), "parcial" = acerto parcial (proposta), qualquer outro
+    caso (inclui ordem certa com IC passando por 0) = erro. (3) Horizonte: "sem colapso" = censura à direita
+    (ordenado como o último, > T); mediana nas 3 sementes de cada condição; empate não é "mais tarde".
 """
 import glob
+import json
 import os
 import re
 import sys
@@ -61,9 +77,12 @@ ALFAS = (0.1, 1.0, 100.0)
 TIPOS_AB = ("A", "B")
 COND_REF = ("fedavg_iid", "media_sem_particao", "sem_media_k1", "central_aprendizado")
 COND_LONGO = COND_REF + ("central_HT",)
-COND_T30 = COND_REF + ("central_HT", "central_lookahead")
+HT, HTCAL = "central_HT", "central_HT_cal"   # HTCAL decide H_tempo/H_dist; HT é exploratório
+COND_T30 = COND_REF + ("central_HT", "central_HT_cal", "central_lookahead")
 COND_BFIXA = COND_REF + ("central_HT",)
-GRUPO_COM = ("fedavg_iid", "media_sem_particao", "central_HT", "central_lookahead", "fedavg_dirichlet")
+GRUPO_COM = ("fedavg_iid", "media_sem_particao", "central_HT_cal", "fedavg_dirichlet")
+FORA_GRUPO = ("central_HT", "central_lookahead")   # rank: mostrados à parte, fora dos dois grupos
+PREVISAO_LITERAL = "H_tempo não, H_dist não, H_het sim, FedAvg só atrasa"
 GRUPO_SEM = ("sem_media_k1", "central_aprendizado")
 COLUNAS_CHAVE = {"tarefa", "tipo", "cond", "semente"}
 SUFIXOS_IGNORADOS = ("_matriz.csv", "_reaprendizado.csv", "_rodadas.csv")
@@ -234,46 +253,94 @@ def classe_d(r, delta=DELTA):
     return "intermediário"
 
 
-def h_tempo(df):
-    """H_tempo / 'HT acima' / H_dist / intermediário / misto / 'não avaliável (motivo)' + detalhes por tarefa."""
-    out = dict(tarefas={}, lookahead={}, veredito=None, motivo=None)
-    itens = [(c, t) for c in ("central_HT", "media_sem_particao", "sem_media_k1") for t in TIPOS_AB]
+def carregar_calibracao(results="results_rodada2"):
+    """Lê <results>/calibracao/{calibracao_HT,selecao_HTcal,selecao_HT,selecao_lookahead}_<A|B>_m3.json.
+    Devolve {tipo: {"calibracao": dict|None, "sel_HTcal": ..., "sel_HT": ..., "sel_lookahead": ...}}; arquivo
+    ausente ou ilegível = None (as CSVs de resultados nunca são lidos daqui)."""
+    nomes = {"calibracao": "calibracao_HT_{t}_m3.json", "sel_HTcal": "selecao_HTcal_{t}_m3.json",
+             "sel_HT": "selecao_HT_{t}_m3.json", "sel_lookahead": "selecao_lookahead_{t}_m3.json"}
+    out = {}
+    for t in TIPOS_AB:
+        out[t] = {}
+        for chave, modelo in nomes.items():
+            arq = os.path.join(results, "calibracao", modelo.format(t=t))
+            try:
+                with open(arq, encoding="utf-8") as f:
+                    out[t][chave] = json.load(f)
+            except (OSError, ValueError):
+                out[t][chave] = None
+    return out
+
+
+def _checar_calibracao(calib):
+    """-> (arquivos ausentes/sem o campo `ok`, tipos com ok=false). calib None = checagem não pedida."""
+    ausentes, falhas = [], []
+    for t in TIPOS_AB:
+        c = (calib or {}).get(t, {}).get("calibracao")
+        if not isinstance(c, dict) or not isinstance(c.get("ok"), bool):
+            ausentes.append(f"calibracao_HT_{t}_m3.json")
+        elif not c["ok"]:
+            falhas.append(t)
+    return ausentes, falhas
+
+
+def _expl_ht(df, a, b, t):
+    """Exploratório: d = a - b pareado (gap) com IC, d por semente e a mesma diferença em acc_cont."""
+    va, vb = valores_semente(df, a, t), valores_semente(df, b, t)
+    return dict(d=dif_pareada(df, a, b, t), d_acc_cont=dif_pareada(df, a, b, t, "acc_cont"),
+                por_semente=(va - vb).dropna(), falta=texto_falta(df, [(a, t), (b, t)]))
+
+
+def h_tempo(df, calib=None):
+    """H_tempo / 'HT acima' / H_dist / intermediário / misto / 'não avaliável (motivos)' + detalhes por tarefa.
+    A condição é central_HT_cal. `calib` = saída de carregar_calibracao (None = a checagem de calibração não é
+    feita; o CLI e a tabela sempre a passam). Exploratórios (sem veredito): expl_ht_msp, expl_ht_k1, lookahead."""
+    out = dict(tarefas={}, lookahead={}, expl_ht_msp={}, expl_ht_k1={}, calibracao=calib, veredito=None,
+               motivo=None, motivos=[], calib_checada=calib is not None, calib_falha=[])
+    itens = [(c, t) for c in (HTCAL, "media_sem_particao", "sem_media_k1") for t in TIPOS_AB]
     falta = texto_falta(df, itens)
     for t in TIPOS_AB:
-        ht, msp, k1 = (resumo(df, c, t) for c in ("central_HT", "media_sem_particao", "sem_media_k1"))
+        ht, msp, k1 = (resumo(df, c, t) for c in (HTCAL, "media_sem_particao", "sem_media_k1"))
         lh = {c: float(valores_semente(df, c, t, "loss_nova").mean()) if len(valores_semente(
-            df, c, t, "loss_nova")) else np.nan for c in ("central_HT", "media_sem_particao")}
-        rel = abs(lh["central_HT"] - lh["media_sem_particao"]) / lh["media_sem_particao"] \
+            df, c, t, "loss_nova")) else np.nan for c in (HTCAL, "media_sem_particao")}
+        rel = abs(lh[HTCAL] - lh["media_sem_particao"]) / lh["media_sem_particao"] \
             if lh["media_sem_particao"] and not np.isnan(lh["media_sem_particao"]) else np.nan
-        ah = valores_semente(df, "central_HT", t, "acc_nova")
+        ah = valores_semente(df, HTCAL, t, "acc_nova")
         am = valores_semente(df, "media_sem_particao", t, "acc_nova")
         dacc = float(ah.mean() - am.mean()) if len(ah) and len(am) else np.nan
-        d = dif_pareada(df, "central_HT", "media_sem_particao", t)
+        d = dif_pareada(df, HTCAL, "media_sem_particao", t)
         sec_a = bool(msp["inf"] <= ht["media"] <= msp["sup"]) if _ok_ic(msp) and not np.isnan(ht["media"]) else None
         sec_b = bool(msp["inf"] > ht["sup"]) if _ok_ic(msp) and _ok_ic(ht) else None
         out["tarefas"][t] = dict(
             ht=ht, msp=msp, k1=k1, d=d, classe=classe_d(d),
             p_vant=bool(msp["inf"] > k1["sup"]) if _ok_ic(msp) and _ok_ic(k1) else None,
-            loss_ht=lh["central_HT"], loss_msp=lh["media_sem_particao"], rel_ce=rel,
+            loss_ht=lh[HTCAL], loss_msp=lh["media_sem_particao"], rel_ce=rel,
             ce_ok=bool(rel <= TOL_CE) if not np.isnan(rel) else None,
             dacc=dacc, acc_ok=bool(abs(dacc) <= TOL_ACC) if not np.isnan(dacc) else None,
             sec_dentro=sec_a, sec_acima=sec_b)
-        la = dif_pareada(df, "central_lookahead", "media_sem_particao", t)
-        out["lookahead"][t] = dict(d=la, falta=texto_falta(df, [("central_lookahead", t)]))
-    if falta:
-        out["motivo"] = falta
-        out["veredito"] = f"não avaliável ({falta})"
-        return out
+        out["lookahead"][t] = _expl_ht(df, "central_lookahead", "media_sem_particao", t)
+        out["expl_ht_msp"][t] = _expl_ht(df, HT, "media_sem_particao", t)
+        out["expl_ht_k1"][t] = _expl_ht(df, HT, "sem_media_k1", t)
+    # motivos de "não avaliável", na ordem: falta de dado > calibração não atingida > P_vant / elegibilidade
+    partes_falta = [falta[len("falta "):]] if falta else []
+    if calib is not None:
+        ausentes, falhas = _checar_calibracao(calib)
+        partes_falta += ausentes
+        out["calib_falha"] = falhas
+    motivos = ["falta " + "; ".join(partes_falta)] if partes_falta else []
+    if out["calib_falha"]:
+        motivos.append("calibração não atingida")
     tar = out["tarefas"]
-    motivos = []
-    pv = [t for t in TIPOS_AB if tar[t]["p_vant"] is not True]
-    if pv:
-        motivos.append("P_vant falhou em " + ",".join(pv))
-    ce = [t for t in TIPOS_AB if tar[t]["ce_ok"] is not True]
-    if ce:
-        motivos.append("nível de aprendizado diferente (perda de treino da rede nova do central_HT fora de 10% de "
-                       "media_sem_particao) em " + ",".join(ce))
+    if not falta:   # P_vant e elegibilidade só são calculáveis com os dados completos
+        pv = [t for t in TIPOS_AB if tar[t]["p_vant"] is not True]
+        if pv:
+            motivos.append("P_vant falhou em " + ",".join(pv))
+        ce = [t for t in TIPOS_AB if tar[t]["ce_ok"] is not True]
+        if ce:
+            motivos.append("nível de aprendizado diferente (perda de treino da rede nova do central_HT_cal fora de "
+                           "10% de media_sem_particao) em " + ",".join(ce))
     if motivos:
+        out["motivos"] = motivos
         out["motivo"] = "; ".join(motivos)
         out["veredito"] = f"não avaliável ({out['motivo']})"
         return out
@@ -338,7 +405,8 @@ def rank_tabela(df):
         por_cond = {}
         for serie in sorted(df[(df["braco"] == "T30") & (df["tipo"] == t)]["serie"].unique()):
             re_, sr = (valores_semente(df, serie, t, c, so_ref=False) for c in ("rank_ef", "srank_feat"))
-            linhas.append((rotulo(serie), t, resumir(re_.values), resumir(sr.values)))
+            fora = " (fora do grupo)" if serie in FORA_GRUPO else ""
+            linhas.append((rotulo(serie) + fora, t, resumir(re_.values), resumir(sr.values)))
             cond = "fedavg_dirichlet" if serie.startswith("fedavg_dirichlet") else serie
             por_cond.setdefault(cond, []).append((re_, sr))
         for nome, grupo in (("grupo: com média", GRUPO_COM), ("grupo: sem média", GRUPO_SEM)):
@@ -456,13 +524,21 @@ def colapso_tabela(df):
                     falta.append(s)
                 else:
                     por[s] = indice_colapso(g["tarefa"].values, g["gap"].values)
-            col = [v for v in por.values() if v is not None]
-            out[(c, t)] = dict(
-                falta=falta, por_semente=por,
+            out[(c, t)] = stats_colapso(por, falta)
+    return out
+
+
+def stats_colapso(por, falta=()):
+    """por {semente: índice|None} -> dict. `mediana`/`minimo`/`maximo`: só entre as sementes que colapsaram
+    (descritivas). `mediana_cens`: mediana nas sementes com 'sem colapso' = +inf (censura à direita, > T), usada
+    só no julgamento PROPOSTO da previsão (None se faltar semente)."""
+    col = [v for v in por.values() if v is not None]
+    cens = [np.inf if v is None else float(v) for v in por.values()]
+    return dict(falta=list(falta), por_semente=por,
                 mediana=float(np.median(col)) if col else None, minimo=min(col) if col else None,
                 maximo=max(col) if col else None,
-                frac_sem=(len(por) - len(col)) / len(por) if por else None)
-    return out
+                frac_sem=(len(por) - len(col)) / len(por) if por else None,
+                mediana_cens=float(np.median(cens)) if cens and not falta else None)
 
 
 def julgar_horizonte(col):
@@ -483,11 +559,69 @@ def julgar_horizonte(col):
     return f"outro ({desc})"
 
 
+def julgar_horizonte_proposta(col):
+    """PROPOSTA (aguarda confirmação do autor), tarefa A: igual a `julgar_horizonte`, mas a mediana de cada condição
+    é calculada nas 3 sementes com 'sem colapso' = censura à direita (+inf, ordenado como o último, > T); 'mais tarde'
+    é estrito (empate não é mais tarde). 'só atrasa': o fedavg_iid colapsa em pelo menos uma semente e a mediana dele
+    é maior que as de sem_media_k1 e central_aprendizado; 'impede': nenhuma semente do fedavg_iid colapsa e as
+    duas outras colapsam em pelo menos uma. A mediana só entre as que colapsaram continua descritiva."""
+    f, k, ca = (col[(c, "A")] for c in ("fedavg_iid", "sem_media_k1", "central_aprendizado"))
+    falt = [f"{c}/A sementes {','.join(map(str, x['falta']))}" for c, x in
+            (("fedavg_iid", f), ("sem_media_k1", k), ("central_aprendizado", ca)) if x["falta"]]
+    if falt:
+        return "não avaliável (falta " + "; ".join(falt) + ")"
+    f_col, k_col, ca_col = (x["mediana"] is not None for x in (f, k, ca))
+    if not f_col and k_col and ca_col:
+        return "impede a perda"
+    if f_col and f["mediana_cens"] > k["mediana_cens"] and f["mediana_cens"] > ca["mediana_cens"]:
+        return "só atrasa a perda"
+    txt = lambda x: "sem colapso (> T)" if np.isinf(x["mediana_cens"]) else f"{x['mediana_cens']:g}"  # noqa: E731
+    return (f"outro (mediana com censura: fedavg_iid {txt(f)}; sem_media_k1 {txt(k)}; "
+            f"central_aprendizado {txt(ca)})")
+
+
+# ---------------------------------------------------------------- julgamento da previsão (PROPOSTA)
+
+ROTULO_PROPOSTA = "PROPOSTA — aguarda confirmação do autor"
+
+
+def _julg(item, previsao, calculado, julgamento):
+    return dict(item=item, previsao=previsao, calculado=calculado, julgamento=julgamento)
+
+
+def julgar_previsao(ht, hh, col):
+    """Julga a previsão do autor, item a item, pelas 4 regras PROPOSTAS (rotulo ROTULO_PROPOSTA). Devolve uma lista
+    de dicts (item, previsao, calculado, julgamento); julgamento é um de: 'acerto', 'acerto parcial', 'erro',
+    'não conta (não avaliável)'. Itens: (1) H_tempo e H_dist, um só (desfecho previsto: 'HT acima');
+    (2) H_het (previsto: 'atendida'); (3) horizonte longo (previsto: 'só atrasa a perda')."""
+    itens = []
+    v = ht["veredito"]
+    cls = [ht["tarefas"][t]["classe"] for t in TIPOS_AB]
+    if v.startswith("não avaliável"):
+        j = "não conta (não avaliável)"
+    elif v == "HT acima":
+        j = "acerto"
+    elif v.startswith("misto") and "acima" in cls:
+        j = "acerto parcial"
+    else:
+        j = "erro"
+    itens.append(_julg("H_tempo e H_dist (um só item)", 'H_tempo não e H_dist não (desfecho "HT acima")', v, j))
+    g = hh["geral"]
+    j = {"atendida": "acerto", "parcial": "acerto parcial"}.get(g, "não conta (não avaliável)"
+                                                                if g.startswith("não avaliável") else "erro")
+    itens.append(_julg("H_het", "sim (atendida nas duas tarefas)", g, j))
+    h = julgar_horizonte_proposta(col)
+    j = "não conta (não avaliável)" if h.startswith("não avaliável") else \
+        ("acerto" if h == "só atrasa a perda" else "erro")
+    itens.append(_julg("horizonte longo (tarefa A)", "o FedAvg só atrasa a perda", h, j))
+    return itens
+
+
 # ---------------------------------------------------------------- CLI
 
-def resumo_vereditos(df):
-    ht, hh, col = h_tempo(df), h_het(df), colapso_tabela(df)
-    return dict(h_tempo=ht["veredito"], h_het=hh["geral"], horizonte=julgar_horizonte(col))
+def resumo_vereditos(df, calib=None):
+    ht, hh, col = h_tempo(df, calib), h_het(df), colapso_tabela(df)
+    return dict(h_tempo=ht["veredito"], h_dist=ht["veredito"], h_het=hh["geral"], horizonte=julgar_horizonte(col))
 
 
 def main(argv=None):
@@ -500,7 +634,8 @@ def main(argv=None):
         print(f"sem resultados em {a.results}/ (nenhum CSV válido das sementes 6 a 10); nada foi calculado",
               file=sys.stderr)
         return 1
-    for k, v in resumo_vereditos(df).items():
+    calib = carregar_calibracao(a.results)
+    for k, v in resumo_vereditos(df, calib).items():
         print(f"{k}: {v}")
     return 0
 

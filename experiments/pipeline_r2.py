@@ -23,6 +23,7 @@ import pandas as pd
 import torch
 
 from experiments.calibrar import calibrar
+from experiments.calibrar_ht import calibrar_ht
 from src.condicoes import _base_arquivo, condicao_r2, csv_valido, executar, pasta_calib
 from src.config import (
     ALFAS, MUS, NIVEL_R2, SEMENTE_CALIB, SEMENTES_LONGO, SEMENTES_R2, T_LONGO, T_PADRAO, tarefas_com_nova,
@@ -34,15 +35,19 @@ REFS = ("fedavg_iid", "media_sem_particao", "sem_media_k1", "central_aprendizado
 LIMITE_APRENDE = 0.3     # teste curto: PARE se a lebre do central_HT fica abaixo disto (não aprende)
 # segundos de CPU de uma execução de T=30 (medidos na rodada 1, m=3 interpolado, com diagnósticos)
 CUSTO_S = {"fedavg_iid": 400, "media_sem_particao": 400, "fedavg_dirichlet": 400, "sem_media_k1": 130,
-           "central_HT": 130, "central_lookahead": 130, "central_aprendizado": 85}
+           "central_HT": 130, "central_lookahead": 130, "central_aprendizado": 85, "central_HT_cal": 130}
+# o custo do central_HT_cal cresce com os passos locais S calibrados (15 = custo do central_HT); S só se
+# conhece depois da calibração, então a estimativa dá um intervalo
+S_HT_CAL_ESTIMADO = (30, 120)
+NOME_METODO = {"HT": "central_HT", "lookahead": "central_lookahead", "HTcal": "central_HT_cal"}
 
 
 def plano_confirmatorio() -> list[tuple]:
-    """(condição, tarefa, semente, T, alfa) das sementes 6 a 10: 90 + 25 = 115 execuções."""
+    """(condição, tarefa, semente, T, alfa) das sementes 6 a 10: 100 + 25 = 125 execuções."""
     jobs = []
     for tipo in ("A", "B"):
         for sem in SEMENTES_R2:
-            jobs += [(c, tipo, sem, T_PADRAO, None) for c in REFS + ("central_HT", "central_lookahead")]
+            jobs += [(c, tipo, sem, T_PADRAO, None) for c in REFS + ("central_HT_cal", "central_HT", "central_lookahead")]
             jobs += [("fedavg_dirichlet", tipo, sem, T_PADRAO, a) for a in ALFAS]
     for sem in SEMENTES_R2:
         jobs += [(c, "B_fixa", sem, T_PADRAO, None) for c in REFS + ("central_HT",)]
@@ -73,9 +78,9 @@ def _preparar_processo() -> None:
 
 
 def rodar(nome: str, tipo: str, sem: int, T: int, alfa: float | None, mu: float | None,
-          pasta: str, sufixo: str, dir_r2: str) -> str:
+          pasta: str, sufixo: str, dir_r2: str, s_local: int | None = None) -> str:
     """Roda UMA execução (ou pula se o CSV já é válido). `pasta` é onde o CSV vai."""
-    cond = condicao_r2(nome, tipo, Path(dir_r2), T=T, alfa=alfa, mu=mu)
+    cond = condicao_r2(nome, tipo, Path(dir_r2), T=T, alfa=alfa, mu=mu, s_local=s_local)
     pasta = Path(pasta)
     if csv_valido(cond, tipo, sem, pasta, sufixo):
         return f"pulado {nome}{sufixo} {tipo} s{sem} (CSV válido)"
@@ -89,14 +94,14 @@ def job_rodar_r2(nome: str, tipo: str, sem: int, T: int, alfa: float | None, dir
 
 
 def job_selecao_mu(metodo: str, tarefa: str, mu: float, dir_r2: str) -> str:
-    nome = "central_HT" if metodo == "HT" else "central_lookahead"
+    nome = NOME_METODO[metodo]
     pasta = pasta_calib(Path(dir_r2)) / "selecao_mu"
     return rodar(nome, tarefa, SEMENTE_CALIB, T_PADRAO, None, mu, str(pasta), f"_mu{mu:g}", dir_r2)
 
 
 def escolher_mu(metodo: str, tarefa: str, dir_r2: Path) -> dict:
     """Maior acurácia contínua média nas 5 últimas tarefas (empate: o menor μ); borda registrada."""
-    nome = "central_HT" if metodo == "HT" else "central_lookahead"
+    nome = NOME_METODO[metodo]
     pasta = pasta_calib(dir_r2) / "selecao_mu"
     notas = {}
     for mu in MUS:
@@ -117,6 +122,13 @@ def job_calibrar_b_fixa(dir_r2: str) -> dict:
     return calibrar("B_fixa", NIVEL_R2, Path(dir_r2))
 
 
+def job_calibrar_ht(tarefa: str, dir_r2: str) -> dict:
+    arq = pasta_calib(Path(dir_r2)) / f"calibracao_HT_{tarefa}_m{NIVEL_R2}.json"
+    if arq.exists():
+        return json.loads(arq.read_text())
+    return calibrar_ht(tarefa, Path(dir_r2))
+
+
 def _redes(T: int) -> int:
     """Redes treinadas numa execução: T da contínua mais as de referência."""
     return T + len(tarefas_com_nova(T, janela_hpart=T <= T_PADRAO))
@@ -124,24 +136,39 @@ def _redes(T: int) -> int:
 
 def _custo(job: tuple) -> float:
     """Segundos de CPU estimados: o custo vai com o número de redes treinadas (T=30: 46; T=100: 139)."""
-    return CUSTO_S[job[0]] * _redes(job[3]) / _redes(T_PADRAO)
+    fator = (sum(S_HT_CAL_ESTIMADO) / 2 / 15) if job[0] == "central_HT_cal" else 1.0
+    return CUSTO_S[job[0]] * fator * _redes(job[3]) / _redes(T_PADRAO)
 
 
 def estimar() -> dict:
+    """Estimativa de CPU (s) do completo. O central_HT_cal depende do S calibrado: dá-se o intervalo."""
     conf, longo = plano_confirmatorio(), plano_longo()
-    cpu = sum(_custo(j) for j in conf + longo) + 12 * 130 + 400 + 300      # + seleção de μ + calibração B_fixa
-    return {"execucoes_confirmatorias": len(conf), "execucoes_longo": len(longo), "selecao_mu": 12,
-            "cpu_horas": cpu / 3600, "parede_3_proc_h": [cpu / 3600 / 3, cpu / 3600 / 3 * 1.8]}
+    ht_cal = [j for j in conf if j[0] == "central_HT_cal"]
+
+    def total(s_ht: int) -> float:
+        resto = sum(_custo(j) for j in conf + longo if j[0] != "central_HT_cal")
+        cal = sum(CUSTO_S["central_HT_cal"] * s_ht / 15 * _redes(j[3]) / _redes(T_PADRAO) for j in ht_cal)
+        fixo = (12 * 130                                   # seleção de μ do HT e do lookahead
+                + 6 * 130 * s_ht / 15                      # seleção de μ do HT_cal (com os S calibrados)
+                + 2 * 400 + 2 * 300 + 300)                 # msp T=30 na semente 1000, calibração do HT, calibração B_fixa
+        return resto + cal + fixo
+
+    lo, hi = (total(s) / 3600 for s in S_HT_CAL_ESTIMADO)
+    return {"execucoes_confirmatorias": len(conf), "execucoes_longo": len(longo), "selecao_mu": 12 + 6,
+            "S_HT_cal_supostos": list(S_HT_CAL_ESTIMADO), "cpu_horas": [lo, hi],
+            "parede_3_proc_h": [lo / 3, hi / 3 * 1.8]}
 
 
 # ---------------------------------------------------------------- teste curto
 def jobs_teste_curto() -> list[dict]:
-    """Seis caminhos novos, semente 1000, T=12 (T=3 na sanidade, T=100 no caso longo)."""
-    J = lambda nome, tipo, T, suf, alfa=None, mu=None: dict(nome=nome, tipo=tipo, T=T, sufixo=suf, alfa=alfa, mu=mu)
+    """Caminhos novos, semente 1000, T=12 (T=3 na sanidade, T=100 no caso longo). O central_HT_cal roda com
+    S=30 passos locais por rodada (valor de teste; a calibração real só roda no completo)."""
+    J = lambda nome, tipo, T, suf, alfa=None, mu=None, s=None: dict(nome=nome, tipo=tipo, T=T, sufixo=suf, alfa=alfa, mu=mu, s_local=s)
     jobs = [J("sem_media_k1", "A", 3, "_sanidade"), J("central_HT", "A", 3, "_sanidade_mu0", mu=0.0),
             J("central_lookahead", "A", 3, "_sanidade_mu0", mu=0.0),
             J("central_HT", "A", 12, "_tc", mu=0.9), J("central_lookahead", "A", 12, "_tc", mu=0.9),
             J("sem_media_k1", "A", 12, "_tc"), J("sem_media_k1", "B_fixa", 12, "_tc"),
+            J("media_sem_particao", "A", 12, "_tc"), J("central_HT_cal", "A", 12, "_tc", mu=0.9, s=30),
             J("sem_media_k1", "A", T_LONGO, "_T100_tc")]
     for a in ALFAS:
         jobs += [J("fedavg_dirichlet", tipo, 12, f"_a{a:g}_tc", alfa=a) for tipo in ("A", "B")]
@@ -149,7 +176,7 @@ def jobs_teste_curto() -> list[dict]:
 
 
 def _csv_tc(pasta: Path, j: dict) -> pd.DataFrame:
-    cond = condicao_r2(j["nome"], j["tipo"], pasta.parent.parent, T=j["T"], alfa=j["alfa"], mu=j["mu"])
+    cond = condicao_r2(j["nome"], j["tipo"], pasta.parent.parent, T=j["T"], alfa=j["alfa"], mu=j["mu"], s_local=j["s_local"])
     return pd.read_csv(pasta / f"{_base_arquivo(cond, j['tipo'], SEMENTE_CALIB, j['sufixo'])}.csv")
 
 
@@ -211,6 +238,25 @@ def avaliar_teste_curto(dir_r2: Path) -> tuple[list[str], list[str]]:
             pare.append(f"{nome}{suf} {tipo}: sonda v2 sem valor nas tarefas 4 e 9")
         if d["loss_nova"].isna().ne(d["acc_nova"].isna()).any():
             pare.append(f"{nome}{suf} {tipo}: loss_nova e acc_nova com padrões de NaN diferentes")
+    # 7) central_HT_cal: roda, a rede nova responde ao S (≠ sem_media_k1) e a calibração em miniatura gravou algo finito
+    cal = df[("central_HT_cal", "A", "_tc")]
+    msp = df[("media_sem_particao", "A", "_tc")]
+    if cal[["acc_cont", "loss_cont"]].isna().any().any():
+        pare.append("central_HT_cal: NaN em acc_cont/loss_cont")
+    if k1l["loss_nova"].equals(cal["loss_nova"]):
+        pare.append("central_HT_cal (S=30) tem a mesma loss_nova do sem_media_k1 (S=15): o S local não está agindo")
+    perda_media = lambda d: float(d["loss_nova"].dropna().mean())
+    info.append(f"loss_nova média (T=12, semente 1000): media_sem_particao={perda_media(msp):.4f}, "
+                f"sem_media_k1={perda_media(k1l):.4f}, central_HT_cal(S=30)={perda_media(cal):.4f}")
+    arq = pasta / "calibracao_HT_tc.json"
+    if not arq.exists():
+        pare.append("calibração do central_HT_cal em miniatura não gravou calibracao_HT_tc.json")
+    else:
+        c = json.loads(arq.read_text())
+        if not (np.isfinite(c["erro_rel"]) and np.isfinite(c["alvo_loss_nova_msp"])):
+            pare.append("calibração do central_HT_cal em miniatura com valores não finitos")
+        info.append(f"calibração HT em miniatura (T=12, S≤30): S={c['passos_locais']} erro_rel={c['erro_rel']:+.3f} "
+                    f"ok={c['ok']} alvo_fora_do_alcance={c['alvo_fora_do_alcance']} (só testa o código; não decide nada)")
     return pare, info
 
 
@@ -219,10 +265,15 @@ def fase_teste_curto(ex, dir_r2: Path) -> int:
     if pasta.exists():                          # o teste curto sempre recomeça: não reaproveita CSV de código antigo
         shutil.rmtree(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
-    futs = [ex.submit(rodar, j["nome"], j["tipo"], SEMENTE_CALIB, j["T"], j["alfa"], j["mu"], str(pasta), j["sufixo"], str(dir_r2))
-            for j in jobs_teste_curto()]
+    futs = [ex.submit(rodar, j["nome"], j["tipo"], SEMENTE_CALIB, j["T"], j["alfa"], j["mu"], str(pasta), j["sufixo"],
+                      str(dir_r2), j["s_local"]) for j in jobs_teste_curto()]
     for f in futs:
         _resultado(f)
+    # calibração do central_HT_cal em miniatura: referência = media_sem_particao T=12 deste teste, S de 15 a 30
+    ref_j = next(j for j in jobs_teste_curto() if j["nome"] == "media_sem_particao")
+    ref = pasta / f"{_base_arquivo(condicao_r2('media_sem_particao', 'A', dir_r2, T=12), 'A', SEMENTE_CALIB, ref_j['sufixo'])}.csv"
+    if ref.exists():
+        calibrar_ht("A", dir_r2, T=12, passos_max=2 * 75 * 15, referencia=ref, saida=pasta / "calibracao_HT_tc.json")
     pare, info = avaliar_teste_curto(dir_r2)
     for i in info:
         logger.info("TESTE CURTO: %s", i)
@@ -248,17 +299,31 @@ def _resultado(f) -> None:
 
 
 def fase_selecao(ex, dir_r2: Path) -> dict:
+    """Semente 1000, em 3 etapas: (1) execuções de referência e seleção de μ do HT e do lookahead;
+    (2) calibração dos passos locais do central_HT_cal (precisa do media_sem_particao da etapa 1) e da B_fixa;
+    (3) seleção de μ do central_HT_cal (precisa dos passos locais calibrados)."""
     t0 = time.time()
     pasta_calib(dir_r2).mkdir(parents=True, exist_ok=True)
     fs = [ex.submit(job_rodar_r2, "fedavg_iid", "B_fixa", SEMENTE_CALIB, T_PADRAO, None, str(dir_r2))]
+    fs += [ex.submit(job_rodar_r2, "media_sem_particao", t, SEMENTE_CALIB, T_PADRAO, None, str(dir_r2)) for t in ("A", "B")]
     fs += [ex.submit(job_selecao_mu, m, t, mu, str(dir_r2)) for m in ("HT", "lookahead") for t in ("A", "B") for mu in MUS]
     for f in fs:
         _resultado(f)
     for m in ("HT", "lookahead"):
         for t in ("A", "B"):
             escolher_mu(m, t, dir_r2)
-    cal = ex.submit(job_calibrar_b_fixa, str(dir_r2)).result()
+    cal_b = ex.submit(job_calibrar_b_fixa, str(dir_r2))
+    cal_ht = {t: ex.submit(job_calibrar_ht, t, str(dir_r2)) for t in ("A", "B")}
+    cal = cal_b.result()
     logger.info("calibração B_fixa: passos=%s ok=%s", cal["passos"], cal["ok"])
+    for t, f in cal_ht.items():
+        c = f.result()
+        logger.info("calibração central_HT_cal %s: S=%d erro_rel=%+.3f ok=%s%s", t, c["passos_locais"], c["erro_rel"], c["ok"],
+                    "" if c["ok"] else "  [FORA DA TOLERÂNCIA: H_tempo e H_dist ficarão 'não avaliável']")
+    for f in [ex.submit(job_selecao_mu, "HTcal", t, mu, str(dir_r2)) for t in ("A", "B") for mu in MUS]:
+        _resultado(f)
+    for t in ("A", "B"):
+        escolher_mu("HTcal", t, dir_r2)
     return {"selecao_e_calibracao_s": time.time() - t0}
 
 
