@@ -389,3 +389,26 @@ O autor respondeu ao bloco "esclarecimento de desenho — `central_HT_cal`" e **
 5. **Rank exploratório.** O grupo "com média" tem 4 condições: `fedavg_iid`, `media_sem_particao`, `central_HT_cal` e `fedavg_dirichlet` (agregado nos 3 α); `central_HT` e `central_lookahead` aparecem à parte, fora do grupo.
 6. Confirmada também a equivalência de dois lados com δ = 0,02 e o desfecho "HT acima" (2026-10-21), e a leitura de "central_HT" na previsão como `central_HT_cal`.
 Os itens 2 a 4 estão implementados em `plots/rodada2_analise.py` (`julgar_previsao`, `julgar_horizonte_proposta`) e testados com dados sintéticos; nenhum dado da rodada 2 existe.
+
+## Rodada 2b · `central_HT_cal2`: calibrar o número de rodadas (pré-registro, 2026-10-22; anterior a qualquer dado da 2b)
+A rodada 2 está fechada nos seus resultados (`results_rodada2/`, commit `c8c6143`) e nada dela muda: a calibração do `central_HT_cal` falhou por **granularidade** (S de 15 em 15 passos locais: com S=15 a perda da rede nova fica acima do alvo, em A 0,878 contra 0,708 e em B 0,236 contra 0,141; com S=30 fica muito abaixo, 0,054 e 0,002; não existe valor intermediário). Por isso H_tempo e H_dist da rodada 2 permanecem **"não avaliável (calibração não atingida)"**, como registrado. A 2b é uma etapa nova, com sementes novas, e não reinterpreta a rodada 2.
+
+### Condição nova
+- **`central_HT_cal2`**: Hare & Tortoise como o `central_HT` (lebre medida, tartaruga = média móvel exponencial da lebre, a lebre volta à tartaruga só no início da tarefa), com **S = 15 passos locais por rodada e o Adam recriado a cada rodada** (como o `central_HT`), e com o **número de rodadas por tarefa R calibrado**.
+- **Calibração de R (semente 1000, por tipo de tarefa, A e B):** o alvo é o mesmo da rodada 2: a média da `loss_nova` do `media_sem_particao` (T=30, semente 1000, nas 16 tarefas de referência), lida de `results_rodada2/calibracao/media_sem_particao_m3_{A,B}_1000.csv` (reaproveitada, não reexecutada). Grade **fina de passo 1: R inteiro de 75 a 150** (do R atual a 2R, inclusive). Para cada R, a perda de entropia cruzada de treino da rede nova do HT (a lebre depois de R rodadas, pelo mesmo código de treino da execução real) é medida nas 16 tarefas de referência; escolhe-se o R de menor |erro relativo| (empate: o menor R). **ok** se |erro relativo| ≤ 10%. Se nenhum R chegar a 10%, registra-se `ok=false`, a execução segue com o R mais próximo e **H_tempo e H_dist da 2b saem "não avaliável (calibração não atingida)"**, sem forçar.
+- **μ do `central_HT_cal2`:** escolhido na semente 1000, **depois de R**, na grade **{0,9; 0,99; 0,995; 0,999}**, pela maior `acc_cont` média nas 5 últimas tarefas (empate: o menor μ; borda = 0,9 ou 0,999, registrada), um μ por tipo de tarefa.
+
+### Desenho
+- Condições: `central_HT_cal2` e `media_sem_particao`; tarefas **A e B**; nível m\* = 3 (R_base = 75 só para o `media_sem_particao`; o `central_HT_cal2` usa o R calibrado); T = 30; **sementes novas 11 a 15** (a semente 1000 só para calibração e seleção). Resultados em `results_rodada2b/`.
+- **Esclarecimento (a confirmar pelo autor):** a pré-condição P_vant exige `sem_media_k1` (o IC de `media_sem_particao` acima do de `sem_media_k1`), que não está na lista de condições da 2b. Para que "as mesmas regras" sejam avaliáveis nas sementes novas, a 2b inclui **`sem_media_k1` (A e B, sementes 11 a 15) só como controle de P_vant** (10 execuções baratas). Sem esse acréscimo, P_vant teria de vir da rodada 2 (sementes 6 a 10), o que mistura sementes; o autor escolhe qual das duas.
+- Mesma métrica principal, bootstrap, janela, rede nova de referência (t mod 3 = 2, as 5 últimas e os índices 7 a 11), diagnósticos e sonda v2 da rodada 2.
+
+### Hipóteses, critérios e julgamento
+**H_tempo e H_dist, com os mesmos critérios e regras de julgamento da rodada 2**, com `central_HT_cal2` no lugar de `central_HT_cal`: δ = 0,02; equivalência de dois lados com o desfecho nomeado "HT acima"; P_vant por tarefa; elegibilidade pela perda de entropia cruzada com 10% relativo nas sementes 11 a 15 (acurácia ±0,03 só reportada); todas as operacionalizações 1 a 10 do bloco de 2026-10-21 e as confirmações de 2026-10-22 que se aplicam a H_tempo/H_dist (item único; acerto só com "HT acima" no veredito geral; "misto" com "HT acima" numa tarefa = acerto parcial; "não avaliável" não conta). H_het, o horizonte longo, a B_fixa, o Dirichlet e o rank **não** entram na 2b.
+
+### Previsão do autor
+A **previsão da rodada 2 continua valendo exatamente como está escrita** (commit `ab3c8ab`), porque trata da média no tempo com nível de aprendizado igualado, que é o que o `central_HT_cal2` mede. Na 2b só se julga o item "H_tempo e H_dist" dessa previsão. Este bloco não altera nem reescreve o campo da previsão.
+
+### Ordem e custo
+1. Este pré-registro é commitado antes de implementar. 2. Implementação, testes e auditoria pré-execução, sem rodar. 3. Teste curto (gate) e completo no cluster: calibração de R (A e B), seleção de μ (4 valores × 2 tarefas), 30 execuções (10 `central_HT_cal2`, 10 `media_sem_particao`, 10 `sem_media_k1`). 4. Auditoria dos resultados antes de interpretar; leituras novas entram como exploratórias nos Desvios.
+Custo estimado (não medido): cerca de 3 a 4 CPU-h; com 20 processos, de 20 a 40 min de parede.
