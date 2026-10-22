@@ -42,16 +42,16 @@ A condição de H_tempo e H_dist é `central_HT_cal` (bloco de 2026-10-21 "escla
 12. Julgamento do horizonte longo (tarefa A), regra confirmada pelo autor: uma condição "colapsa" se pelo menos
     uma semente colapsa; "impede" exige que sem_media_k1 e central_aprendizado colapsem nesse sentido e que nenhuma
     semente do fedavg_iid colapse; "só atrasa" compara a mediana (entre sementes que colapsaram) do fedavg_iid com
-    as das duas; se uma delas não colapsou, "outro". (`julgar_horizonte`.) A versão PROPOSTA (censura à direita,
+    as das duas; se uma delas não colapsou, "outro". (`julgar_horizonte`.) A versão confirmada (censura à direita,
     mediana nas 3 sementes) está no item 15.
 13. Mesma semente em duas condições -> diferença pareada por semente na interseção das sementes.
 14. Critério secundário literal: média do central_HT_cal dentro do IC de media_sem_particao (fechado) e
     inf(IC msp) > sup(IC HT_cal) (estrito); reportado, sem veredito. Exploratórios, sem veredito: (a) central_HT
     (15 passos) contra media_sem_particao; (b) central_HT - sem_media_k1 por tarefa e semente (a rede nova é a
     mesma, então a diferença de gap é a de acc_cont); (c) central_lookahead contra media_sem_particao.
-15. PROPOSTA, aguarda confirmação do autor (`julgar_previsao`): (1) H_tempo/H_dist é um só item; a previsão acerta
+15. Confirmado pelo autor em 2026-10-21 (`julgar_previsao`): (1) H_tempo/H_dist é um só item; a previsão acerta
     só se o veredito geral for "HT acima"; "misto" com "HT acima" em uma tarefa = acerto parcial; "não avaliável"
-    não conta. (2) H_het: "atendida" = acerto (confirmado), "parcial" = acerto parcial (proposta), qualquer outro
+    não conta. (2) H_het: "atendida" = acerto (confirmado), "parcial" = acerto parcial (confirmado), qualquer outro
     caso (inclui ordem certa com IC passando por 0) = erro. (3) Horizonte: "sem colapso" = censura à direita
     (ordenado como o último, > T); mediana nas 3 sementes de cada condição; empate não é "mais tarde".
 """
@@ -560,7 +560,7 @@ def julgar_horizonte(col):
 
 
 def julgar_horizonte_proposta(col):
-    """PROPOSTA (aguarda confirmação do autor), tarefa A: igual a `julgar_horizonte`, mas a mediana de cada condição
+    """Regra confirmada pelo autor (2026-10-21), tarefa A: igual a `julgar_horizonte`, mas a mediana de cada condição
     é calculada nas 3 sementes com 'sem colapso' = censura à direita (+inf, ordenado como o último, > T); 'mais tarde'
     é estrito (empate não é mais tarde). 'só atrasa': o fedavg_iid colapsa em pelo menos uma semente e a mediana dele
     é maior que as de sem_media_k1 e central_aprendizado; 'impede': nenhuma semente do fedavg_iid colapsa e as
@@ -580,9 +580,9 @@ def julgar_horizonte_proposta(col):
             f"central_aprendizado {txt(ca)})")
 
 
-# ---------------------------------------------------------------- julgamento da previsão (PROPOSTA)
+# ---------------------------------------------------------------- julgamento da previsão (confirmada)
 
-ROTULO_PROPOSTA = "PROPOSTA — aguarda confirmação do autor"
+ROTULO_JULGAMENTO = "regra de julgamento confirmada pelo autor em 2026-10-21"
 
 
 def _julg(item, previsao, calculado, julgamento):
@@ -590,7 +590,7 @@ def _julg(item, previsao, calculado, julgamento):
 
 
 def julgar_previsao(ht, hh, col):
-    """Julga a previsão do autor, item a item, pelas 4 regras PROPOSTAS (rotulo ROTULO_PROPOSTA). Devolve uma lista
+    """Julga a previsão do autor, item a item, pelas 4 regras confirmadas (rotulo ROTULO_JULGAMENTO). Devolve uma lista
     de dicts (item, previsao, calculado, julgamento); julgamento é um de: 'acerto', 'acerto parcial', 'erro',
     'não conta (não avaliável)'. Itens: (1) H_tempo e H_dist, um só (desfecho previsto: 'HT acima');
     (2) H_het (previsto: 'atendida'); (3) horizonte longo (previsto: 'só atrasa a perda')."""

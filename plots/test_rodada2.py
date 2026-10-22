@@ -417,8 +417,8 @@ def test_md_previsao_literal():
     col0 = {(c, "A"): R.stats_colapso({6: 30, 7: 30, 8: 30}) for c in ("fedavg_iid", "sem_media_k1", "central_aprendizado")}
     md = "\n".join(TB.md_previsao(_fake_ht("HT acima"), dict(geral="atendida"), col0))
     assert "H_tempo não, H_dist não, H_het sim, FedAvg só atrasa" in md
-    assert "PROPOSTA — aguarda confirmação do autor" in md and "| acerto |" in md and "| erro |" in md
-    print("ok md_previsao escreve a previsão literal e o rótulo PROPOSTA")
+    assert "regra de julgamento confirmada pelo autor em 2026-10-21" in md and "| acerto |" in md and "| erro |" in md
+    print("ok md_previsao escreve a previsão literal e o rótulo confirmada")
 
 
 def test_semente_1000_ignorada():
@@ -471,7 +471,7 @@ def test_tabelas_auxiliares_e_cli():
         assert os.path.getsize(os.path.join(saida, f)) > 1000, f
     md = open(os.path.join(saida, "rodada2_tabela_decisao.md"), encoding="utf-8").read()
     for s in ("Previsão do autor × resultado", "só atrasa a perda", "H_het", "rank_ef", "> 1500",
-              "PROPOSTA — aguarda confirmação do autor", R.PREVISAO_LITERAL, "central_HT_cal", "borda",
+              "regra de julgamento confirmada pelo autor em 2026-10-21", R.PREVISAO_LITERAL, "central_HT_cal", "borda",
               "Exploratórios", "(fora do grupo)"):
         assert s in md, s
     # resultados vazios: código 1, sem pasta/figuras

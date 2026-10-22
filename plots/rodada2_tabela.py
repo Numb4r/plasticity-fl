@@ -363,23 +363,23 @@ def md_longo(df):
             L.append(f"| {t} | {c} | {gm} | {por} | {med} | {x['frac_sem']:.2f} |")
     j = R.julgar_horizonte(col)
     L += ["", f"**Julgamento do horizonte (tarefa A), regra já confirmada (mediana só entre as sementes que colapsaram): {j}**",
-          "", f"{R.ROTULO_PROPOSTA}: com \"sem colapso\" como censura à direita e mediana nas 3 sementes: "
+          "", f"{R.ROTULO_JULGAMENTO}: com \"sem colapso\" como censura à direita e mediana nas 3 sementes: "
           f"**{R.julgar_horizonte_proposta(col)}**"]
     return L, col, j
 
 
 def md_previsao(ht, hh, col):
-    """Previsão literal do autor ao lado do veredito. Regras de julgamento: PROPOSTA, aguarda confirmação."""
+    """Previsão literal do autor ao lado do veredito. Regras de julgamento confirmadas pelo autor."""
     itens = R.julgar_previsao(ht, hh, col)
     L = ["## 8. Previsão do autor × resultado (calculado)", "",
          f"Previsão literal do autor (commit `ab3c8ab`): \"{R.PREVISAO_LITERAL}\". Pelo esclarecimento de "
          "2026-10-21, o \"central_HT\" da previsão é o central_HT_cal.", "",
-         f"**Julgamento: {R.ROTULO_PROPOSTA}.** Regras propostas: (1) H_tempo/H_dist acerta só se o veredito geral for "
+         f"**Julgamento: {R.ROTULO_JULGAMENTO}.** Regras: (1) H_tempo/H_dist acerta só se o veredito geral for "
          "\"HT acima\"; \"misto\" com \"HT acima\" numa tarefa = acerto parcial; \"não avaliável\" não conta; "
          "(2) H_tempo e H_dist são um só item; (3) horizonte: \"sem colapso\" = censura à direita (> T), mediana nas "
          "3 sementes, empate não é \"mais tarde\"; (4) H_het: \"atendida\" = acerto (confirmado), \"parcial\" = "
          "acerto parcial, ordem certa com IC passando por 0 = erro.", "",
-         "| item | previsão do autor (literal) | veredito calculado | julgamento (PROPOSTA) |", "|---|---|---|---|"]
+         "| item | previsão do autor (literal) | veredito calculado | julgamento |", "|---|---|---|---|"]
     for x in itens:
         L.append(f"| {x['item']} | {x['previsao']} | {x['calculado']} | {x['julgamento']} |")
     return L
