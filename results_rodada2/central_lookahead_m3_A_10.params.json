@@ -1,0 +1,1 @@
+{"T": 30, "alfa": null, "calibracao_ok": true, "familia": "lookahead", "geral": false, "mu": 0.5, "nivel": 3, "nome": "central_lookahead", "particao": "um", "passos": null, "rodada": 2, "rodadas": 75, "s_local": 15, "sonda_versao": 2, "sp_lambda": null, "versao_dados": 2, "wd": 0.0}

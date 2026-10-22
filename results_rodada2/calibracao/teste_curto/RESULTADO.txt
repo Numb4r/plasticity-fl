@@ -1,0 +1,14 @@
+OK
+INFO: sanidade μ=0: HT e lookahead idênticos ao sem_media_k1
+INFO: acc_cont média das 3 últimas tarefas (T=12): central_HT(lebre, μ=0,9)=0.842, acc_tartaruga=0.835, central_lookahead(μ=0,9)=0.250, sem_media_k1=0.833
+INFO: dirichlet _a0.1_tc A: part_min=2 part_max=301 vazios(máx)=0 acc_cont final=0.486
+INFO: dirichlet _a0.1_tc B: part_min=1 part_max=271 vazios(máx)=0 acc_cont final=0.734
+INFO: dirichlet _a1_tc A: part_min=49 part_max=181 vazios(máx)=0 acc_cont final=0.736
+INFO: dirichlet _a1_tc B: part_min=45 part_max=185 vazios(máx)=0 acc_cont final=0.925
+INFO: dirichlet _a100_tc A: part_min=90 part_max=108 vazios(máx)=0 acc_cont final=0.933
+INFO: dirichlet _a100_tc B: part_min=93 part_max=107 vazios(máx)=0 acc_cont final=0.986
+INFO: B_fixa reaprendizado: passos_copia=[330, 285] passos_nova=[735, 1020] censurados=[False, False]
+INFO: B_fixa maj_frac máx=0.326; fração de tarefas > 0,3 = 0.08
+INFO: T=100: 100 linhas, 36 redes novas (esperado 36), acc_cont final=0.137
+INFO: loss_nova média (T=12, semente 1000): media_sem_particao=0.7046, sem_media_k1=0.9027, central_HT_cal(S=30)=0.0723
+INFO: calibração HT em miniatura (T=12, S≤30): S=15 erro_rel=+0.238 ok=False alvo_fora_do_alcance=False (só testa o código; não decide nada)

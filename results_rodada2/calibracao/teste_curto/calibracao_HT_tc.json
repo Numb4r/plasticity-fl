@@ -1,0 +1,15 @@
+{
+ "tarefa": "A",
+ "alvo_loss_nova_msp": 0.7045811585017613,
+ "passos_locais": 15,
+ "loss_ht": 0.8725230864116124,
+ "erro_rel": 0.23835710887723272,
+ "ok": false,
+ "tolerancia": 0.1,
+ "alvo_fora_do_alcance": false,
+ "versao_dados": 2,
+ "tentativas": {
+  "15": 0.8725230864116124,
+  "30": 0.051089534269911904
+ }
+}
