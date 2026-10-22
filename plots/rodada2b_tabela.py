@@ -28,6 +28,16 @@ def _mu(sel):
     return f"{sel['mu']:g}" + (" [borda]" if sel.get("borda") else "")
 
 
+def _notas(sel):
+    """Notas da seleção de μ como tabela (μ: nota) numa célula; aceita dict, lista ou texto."""
+    n = (sel or {}).get("notas")
+    if isinstance(n, dict):
+        return "; ".join(f"μ={m}: {f3(v)}" for m, v in n.items())
+    if isinstance(n, list):
+        return ", ".join(map(str, n))
+    return str(n) if n else ""
+
+
 def md_calibracao(calib):
     L = ["## 1. Calibração de R (semente 1000) e μ", "",
          "R = rodadas por tarefa (grade 75 a 150); erro_rel = |loss_ht − alvo| / alvo; ok = erro_rel ≤ 10%; "
@@ -36,8 +46,7 @@ def md_calibracao(calib):
     for t in B.TIPOS:
         c = (calib or {}).get(t, {})
         k, sel = c.get("calibracao"), c.get("sel")
-        notas = ", ".join(map(str, sel.get("notas") or [])) if sel and isinstance(sel.get("notas"), list) \
-            else (str(sel.get("notas")) if sel and sel.get("notas") else "")
+        notas = _notas(sel)
         if k:
             cel = [str(k.get("rodadas", "n/d")), f3(k.get("erro_rel")), str(k.get("ok")),
                    f3(k.get("alvo_loss_nova_msp")), f3(k.get("loss_ht"))]
@@ -58,13 +67,27 @@ def md_metrica(df):
 
 
 def md_diferenca(ht):
+    nao_av = str(ht["veredito"]).startswith("não avaliável")
     L = [f"## 3. Diferença pareada {B.HTCAL2} − media_sem_particao (δ = 0,02)", "",
          f"**Veredito geral (H_tempo e H_dist, o mesmo): {ht['veredito']}**", "",
          "Classe: dentro = IC todo em [−δ, +δ]; acima (\"HT acima\") = inf > +δ; abaixo (H_dist) = sup < −δ; "
-         "senão intermediário.", "", "| tarefa | d, IC 95% | classe |", "|---|---|---|"]
+         "senão intermediário." + (" Veredito \"não avaliável\": a classe por tarefa é só descritiva (não decisória)."
+                                   if nao_av else ""), "",
+         "Nota: a perda CE da rede nova está igualada; a acurácia pode não estar; gap = acc_cont − acc_nova.", "",
+         f"| tarefa | d (gap), IC 95% | classe | diferença média de acc_nova ({B.HTCAL2} − msp, 5 últimas "
+         "tarefas, média entre sementes) | dentro de ±0,03 |", "|---|---|---|---|---|"]
     for t in B.TIPOS:
         x = ht["tarefas"][t]
-        L.append(f"| {t} | {ic(x['d'])} | {x['classe']} |")
+        cl = f"{x['classe']} (não decisória)" if nao_av else x["classe"]
+        dentro = "n/d" if x["acc_ok"] is None else ("sim" if x["acc_ok"] else "não")
+        L.append(f"| {t} | {ic(x['d'])} | {cl} | {f3(x['dacc'])} | {dentro} |")
+    L += ["", "Critério secundário (literal; só reportado, sem veredito): média de " + B.HTCAL2 +
+          " dentro do IC de media_sem_particao; inf(IC msp) acima do sup(IC " + B.HTCAL2 + ").", "",
+          f"| tarefa | {B.HTCAL2} dentro do IC de msp (sec_dentro) | inf(msp) > sup({B.HTCAL2}) (sec_acima) |",
+          "|---|---|---|"]
+    for t in B.TIPOS:
+        x = ht["tarefas"][t]
+        L.append(f"| {t} | {x['sec_dentro']} | {x['sec_acima']} |")
     return L
 
 

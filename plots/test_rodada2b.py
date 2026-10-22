@@ -56,7 +56,7 @@ def gerar(pasta, nivel=None, ruido=None, loss_ht=0.05, sem_falta=None, cal_ok=No
         for nome, d in ((f"calibracao_HT2_{t}_m3.json", dict(rodadas=100, ok=ok, erro_rel=0.04 if ok else 0.3,
                                                               alvo_loss_nova_msp=0.05, loss_ht=0.052,
                                                               tentativas={"75": 0.9, "100": 0.052})),
-                        (f"selecao_HTcal2_{t}_m3.json", dict(mu=0.99, borda=False, notas=["x"]))):
+                        (f"selecao_HTcal2_{t}_m3.json", dict(mu=0.99, borda=False, notas={"0.9": 0.63, "0.99": 0.98}))):
             with open(os.path.join(pasta, "calibracao", nome), "w") as f:
                 json.dump(d, f)
     return pasta
@@ -132,3 +132,28 @@ def test_rodada2_inalterada():
     assert R.SEMENTES == (6, 7, 8, 9, 10) and R.HTCAL == "central_HT_cal"
     _ht()
     assert R.SEMENTES == (6, 7, 8, 9, 10) and R.HTCAL == "central_HT_cal"
+
+
+def test_relatorio_a_d():
+    p = tempfile.mkdtemp(prefix="r2b_sint_")
+    try:
+        gerar(p, nivel=_n(0.10, 0.10))
+        txt, _ = TB.texto(p)
+        # (a) diferença de acc_nova e ±0,03 + nota
+        assert "diferença média de acc_nova" in txt and "| sim |" in txt
+        assert "a perda CE da rede nova está igualada; a acurácia pode não estar; gap = acc_cont − acc_nova" in txt
+        # (b) critério secundário literal
+        assert "sec_dentro" in txt and "sec_acima" in txt and "Critério secundário" in txt
+        # (c) avaliável: sem "não decisória"
+        assert "não decisória" not in txt
+        # (d) notas como tabela, sem repr de dict
+        assert "μ=0.9: 0.630; μ=0.99: 0.980" in txt and "{'0.9'" not in txt
+    finally:
+        shutil.rmtree(p)
+    p = tempfile.mkdtemp(prefix="r2b_sint_")
+    try:
+        gerar(p, cal_ok={"A": False})
+        txt, _ = TB.texto(p)
+        assert txt.count("| (não decisória)") + txt.count(" (não decisória) |") == 2
+    finally:
+        shutil.rmtree(p)
