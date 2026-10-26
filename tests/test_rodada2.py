@@ -41,7 +41,7 @@ def test_papeis_novos_vao_no_fim_e_os_antigos_nao_mudam():
                            "embaralha_continua", "embaralha_nova", "sp_ruido", "sonda_alvo", "sonda_nova",
                            "sonda_embaralha", "calib_nova", "calib_embaralha")
     assert PAPEIS[14:18] == ("media_tarefa", "dados_tarefa", "diag_indices", "diag_hess_v0")
-    assert PAPEIS[18:] == ("particao_dirichlet", "ref_centro", "reaprende", "reaprende_nova")
+    assert PAPEIS[18:22] == ("particao_dirichlet", "ref_centro", "reaprende", "reaprende_nova")   # rodada 2; a 4 acrescenta "redo_reinicio" depois
 
 
 def test_tarefas_com_nova_no_braco_longo_nao_tem_a_janela_7_a_11():
