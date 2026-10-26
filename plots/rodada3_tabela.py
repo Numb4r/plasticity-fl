@@ -37,13 +37,16 @@ def cc(c):
 
 def md_prep(dec):
     pr = dec["p_rep"]
-    L = ["## 1. Pré-condição P_rep", "",
-         f"Regra: inf do IC pareado de gap(fedavg_iid) − gap(sem_media_k1) > +δ = {R.DELTA} em A e em B. "
-         "Sem isso, todas as hipóteses saem \"não avaliável (a vantagem do FedAvg não se reproduziu)\".", "",
-         f"**P_rep: {'atendida' if pr['ok'] else pr['msg']}**", "", "| tarefa | diferença (IC 95%) | inf > δ |", "|---|---|---|"]
+    L = ["## 1. Pré-condição P_rep (por tarefa)", "",
+         f"Regra: em cada tarefa, inf do IC pareado de gap(fedavg_iid) − gap(sem_media_k1) > +δ = {R.DELTA}, com a "
+         "elegibilidade do sem_media_k1. Só as tarefas em que vale têm as hipóteses avaliadas; onde falha, o veredito "
+         f"da tarefa é \"{R.MSG_PREP}\" (ou o motivo de falta/elegibilidade). Falha em B não derruba A e vice-versa.",
+         "", f"**Tarefas com P_rep válido: {', '.join(pr['validas']) or 'nenhuma'}**", "",
+         "| tarefa | diferença (IC 95%) | inf > δ | situação |", "|---|---|---|---|"]
     for t in R.TIPOS:
         x = pr["por"][t]
-        L.append(f"| {t} | {cc(x['c'])} | {'n/d' if x['ok'] is None else x['ok']} |")
+        c = cc(x["c"]) if x["c"] else x["msg"]
+        L.append(f"| {t} | {c} | {'n/d' if x['ok'] is None else x['ok']} | {'atendida' if x['ok'] else x['msg']} |")
     return L
 
 
@@ -73,49 +76,61 @@ def md_metrica(df):
     return L
 
 
+def _desc(dec, t):
+    """Nota quando a tarefa t não tem P_rep válido: os números são descritivos."""
+    return "" if dec["p_rep"]["por"][t]["ok"] is True else " (descritivo: P_rep não vale nesta tarefa)"
+
+
+def _vers(dec, h):
+    return f"A: {h['vers']['A']}; B: {h['vers']['B']}"
+
+
 def _linhas_k(nome, h, dec, regra, contraste_txt):
-    pr = dec["p_rep"]["ok"] is not True
-    L = [f"### {nome}", "", f"**Veredito geral: {dec['hip'][nome]['geral']}** (A: {dec['hip'][nome]['vers']['A']}; "
-         f"B: {dec['hip'][nome]['vers']['B']})", "",
-         f"Regra: {regra}." + (" P_rep não atendida: os números abaixo são descritivos, não decisórios." if pr else ""),
+    L = [f"### {nome}", "", f"**Veredito geral: {dec['hip'][nome]['geral']}** ({_vers(dec, dec['hip'][nome])})", "",
+         f"Regra: {regra}. Onde P_rep não vale, os números são descritivos, não decisórios.",
          "", f"| tarefa | K | {contraste_txt}, IC 95% | resultado |", "|---|---|---|---|"]
     for t in R.TIPOS:
         for k in (2,) + R.KS:
             x = h[t]["porK"][k]
             nota = " (K=2 só reportado)" if k == 2 else ""
             L.append(f"| {t} | {k} | {cc(x['c']) if x['c'] else '—'} | {x['res']}{nota} |")
-        L.append(f"| {t} | veredito | | **{h[t]['veredito']}** |")
+        L.append(f"| {t} | veredito da hipótese | | **{h[t]['veredito']}**{_desc(dec, t)} |")
     return L
 
 
 def md_hk(dec):
     h = dec["hip"]["H_K"]
-    L = ["### H_K", "", f"**Veredito geral: {h['geral']}** (A: {h['vers']['A']}; B: {h['vers']['B']})", "",
-         "Regra: na particao_iid, gap(20) > gap(10) > gap(5) e inf do IC pareado de gap(20) − gap(5) > 0; três "
-         "médias a menos de 0,01 de 0 = \"inconclusivo (sem faixa dinâmica)\"." +
-         (" P_rep não atendida: números descritivos." if dec["p_rep"]["ok"] is not True else ""), "",
-         "| tarefa | gap K=2 (só reportado) | gap K=5 | gap K=10 | gap K=20 | 20 > 10 > 5 | gap(20) − gap(5) | inf > 0 | "
+    L = ["### H_K", "", f"**Veredito geral: {h['geral']}** ({_vers(dec, h)})", "",
+         "Regra: na particao_iid, gap(25) > gap(10) > gap(5) e inf do IC pareado de gap(25) − gap(5) > 0; três "
+         "médias a menos de 0,01 de 0 = \"inconclusivo (sem faixa dinâmica)\". Onde P_rep não vale, os números são "
+         "descritivos.", "",
+         "| tarefa | gap K=2 (só reportado) | gap K=5 | gap K=10 | gap K=25 | 25 > 10 > 5 | gap(25) − gap(5) | inf > 0 | "
          "veredito |", "|---|---|---|---|---|---|---|---|---|"]
     for t in R.TIPOS:
         x = h["por"][t]["t"]
-        L.append(f"| {t} | " + " | ".join(ic(x["medias"][k]) for k in (2, 5, 10, 20)) + f" | {x['ordem']} | "
-                 f"{cc(x['c'])} | {x['ic_acima0']} | {h['por'][t]['veredito']} |")
+        L.append(f"| {t} | " + " | ".join(ic(x["medias"][k]) for k in (2, 5, 10, 25)) + f" | {x['ordem']} | "
+                 f"{cc(x['c'])} | {x['ic_acima0']} | {h['por'][t]['veredito']}{_desc(dec, t)} |")
     return L
 
 
 def md_hipoteses(dec):
-    L = ["## 4. Hipóteses (δ = 0,05; comparações pareadas por semente; IC fechado)", ""]
+    L = ["## 4. Hipóteses (δ = 0,05; comparações pareadas por semente; IC fechado)", "",
+         "Vereditos por tarefa ao lado do geral (geral só com as tarefas em que P_rep vale).", "",
+         "| hipótese | tarefa A | tarefa B | geral |", "|---|---|---|---|"]
+    for n, h in dec["hip"].items():
+        L.append(f"| {n} | {h['vers']['A']} | {h['vers']['B']} | **{h['geral']}** |")
+    L += [""]
     L += _linhas_k("H_dados", dec["hip"]["H_dados"]["por"], dec, "d_K = gap(particao_iid_kK) − gap(copias_kK) "
-                   "(K=10: fedavg_iid − copias_k10) com inf do IC > +δ, em K = 5, 10, 20", "d_K")
+                   "(K=10: fedavg_iid − copias_k10) com inf do IC > +δ, em K = 5, 10, 25", "d_K")
     L += [""] + _linhas_k("H_cópias", dec["hip"]["H_cópias"]["por"], dec, "IC pareado de gap(copias_kK) − "
-                          "gap(sem_media_k1) inteiro em [−δ, +δ], em K = 5, 10, 20", "copias − sem_media_k1")
+                          "gap(sem_media_k1) inteiro em [−δ, +δ], em K = 5, 10, 25", "copias − sem_media_k1")
     L += [""] + md_hk(dec)
     return L
 
 
 def md_relato_k(dec):
-    L = ["## 5. À parte: gap(20) − gap(5) tem IC acima de 0? (para a leitura da previsão \"K=20 melhor que K=5\")", "",
-         "| tarefa | família | gap(20) − gap(5), IC 95% | inf > 0 | elegibilidade |", "|---|---|---|---|---|"]
+    L = ["## 5. À parte: gap(25) − gap(5) tem IC acima de 0? (para a leitura da previsão \"o maior K (25) melhor que K=5\")", "",
+         "| tarefa | família | gap(25) − gap(5), IC 95% | inf > 0 | elegibilidade |", "|---|---|---|---|---|"]
     for t in R.TIPOS:
         x = dec["hip"]["H_K"]["por"][t]["t"]
         L.append(f"| {t} | particao_iid | {cc(x['c'])} | {x['ic_acima0']} | {x['elegivel'] or 'elegível'} |")
@@ -125,7 +140,7 @@ def md_relato_k(dec):
 def md_epocas(df, calib):
     L = ["## 6. Braço de épocas locais fixas (exploratório, SEM veredito)", "",
          "Mesmos contrastes: d_K = gap(particao_epocas_kK) − gap(copias_kK) (K=10: fedavg_iid, igual a "
-         "particao_epocas_k10 por igualdade); S_local = 75, 30 e 8 passos (K = 2, 5, 20). Só reportado.", "",
+         "particao_epocas_k10 por igualdade); S_local = 75, 30 e 6 passos (K = 2, 5, 25; 3 épocas exatas). Só reportado.", "",
          "| tarefa | K | gap particao_epocas | d_K, IC 95% | inf > δ | elegibilidade (informativa) |",
          "|---|---|---|---|---|---|"]
     tend = []
@@ -137,8 +152,8 @@ def md_epocas(df, calib):
                      f"{x['eleg'] or 'elegível'} |")
         x = b["tend"]
         tend.append(f"| {t} | {x['ordem']} | {cc(x['c'])} | {x['ic_acima0']} |")
-    L += ["", "Tendência em K (gap(20) > gap(10) > gap(5) e gap(20) − gap(5)):", "",
-          "| tarefa | 20 > 10 > 5 | gap(20) − gap(5), IC 95% | inf > 0 |", "|---|---|---|---|"] + tend
+    L += ["", "Tendência em K (gap(25) > gap(10) > gap(5) e gap(25) − gap(5)):", "",
+          "| tarefa | 25 > 10 > 5 | gap(25) − gap(5), IC 95% | inf > 0 |", "|---|---|---|---|"] + tend
     return L
 
 
@@ -159,11 +174,13 @@ def md_mecanismo(df):
 def md_previsao(dec):
     L = ["## 8. Previsão do autor × resultado", "",
          "Regra: \"não\" acerta se \"não atendida\", em parte se \"parcial\", erra se \"atendida\"; \"sim\" acerta se "
-         "\"atendida\", em parte se \"parcial\", erra se \"não atendida\"; \"não avaliável\" não conta. Leituras "
-         "(2026-10-26): H_K como registrada; H_cópias \"não\" = \"não atendida\".", "",
-         "| item | previsão | veredito geral | julgamento |", "|---|---|---|---|"]
+         "\"atendida\", em parte se \"parcial\", erra se \"não atendida\"; \"não avaliável\" não conta. O julgamento usa "
+         "o veredito-base (sem o rótulo \"só na tarefa X\", mostrado ao lado). Leituras (2026-10-26): H_K como "
+         "registrada, referida ao maior K (25); H_cópias \"não\" = \"não atendida\".", "",
+         "| item | previsão | veredito-base | rótulo | veredito geral | julgamento |", "|---|---|---|---|---|---|"]
     for j in R.julgar_previsao(dec):
-        L.append(f"| {j['item']} | {j['previsao']} | {j['calculado']} | {j['julgamento']} |")
+        L.append(f"| {j['item']} | {j['previsao']} | {j['base']} | {j['rotulo'] or '—'} | {j['calculado']} | "
+                 f"{j['julgamento']} |")
     return L
 
 
@@ -173,7 +190,7 @@ def fig_gap(df, caminho):
     desenhou = False
     for ax, t in zip(eixos, R.TIPOS):
         for i, (fam, f) in enumerate((("particao_iid", R.cond_part), ("copias", R.cond_cop))):
-            pts = [(k, R.resumo(df, f(k), t)) for k in (2, 5, 10, 20)]
+            pts = [(k, R.resumo(df, f(k), t)) for k in (2,) + R.KS]
             pts = [(k, r) for k, r in pts if r["n"]]
             if not pts:
                 continue
@@ -189,8 +206,8 @@ def fig_gap(df, caminho):
                         **{k: v for k, v in ESTILOS["sem_media_k1"].items() if k != "linestyle"})
         ax.axhline(0, color="gray", linewidth=0.8)
         ax.set_xscale("log")
-        ax.set_xticks([1, 2, 5, 10, 20])
-        ax.set_xticklabels(["1", "2", "5", "10", "20"])
+        ax.set_xticks([1, 2, 5, 10, 25])
+        ax.set_xticklabels(["1", "2", "5", "10", "25"])
         ax.set_xlabel("K (número de trabalhadores)")
         ax.set_title(f"tarefa {t}", fontsize=9)
     if not desenhou:

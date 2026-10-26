@@ -11,13 +11,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rodada3_analise as R  # noqa: E402
 import rodada3_tabela as T  # noqa: E402
 
-BASE = {"fedavg_iid": 0.10, "particao_iid_k2": 0.03, "particao_iid_k5": 0.06, "particao_iid_k20": 0.14,
-        "copias_k2": 0.0, "copias_k5": 0.0, "copias_k10": 0.0, "copias_k20": 0.0, "sem_media_k1": 0.0,
-        "particao_epocas_k2": 0.02, "particao_epocas_k5": 0.04, "particao_epocas_k20": 0.08}
+BASE = {"fedavg_iid": 0.10, "particao_iid_k2": 0.03, "particao_iid_k5": 0.06, "particao_iid_k25": 0.14,
+        "copias_k2": 0.0, "copias_k5": 0.0, "copias_k10": 0.0, "copias_k25": 0.0, "sem_media_k1": 0.0,
+        "particao_epocas_k2": 0.02, "particao_epocas_k5": 0.04, "particao_epocas_k25": 0.08}
 REF = [3, 8, 12, 25, 26, 27, 28, 29]   # tarefas com gap (as da janela mais algumas)
 
 
-def fazer(dir_, gaps=None, loss=None, calib_ruim=(), sem_arquivo=(), sem_semente=(), sem_tarefa=(), sem_calib=()):
+def fazer(dir_, gaps=None, loss=None, calib_ruim=(), sem_arquivo=(), sem_semente=(), sem_tarefa=(), sem_calib=(),
+          sem_arq_t=()):
     """Escreve CSVs e JSONs sintéticos. gaps/loss: {cond: valor} (ou {(cond, tipo): valor}) sobre o BASE."""
     g = dict(BASE)
     g.update(gaps or {})
@@ -26,7 +27,7 @@ def fazer(dir_, gaps=None, loss=None, calib_ruim=(), sem_arquivo=(), sem_semente
     for c in R.CONDICOES:
         for t in R.TIPOS:
             for s in R.SEMENTES:
-                if (c, s) in sem_arquivo:
+                if (c, s) in sem_arquivo or (c, t, s) in sem_arq_t:
                     continue
                 gv = g[(c, t)] if (c, t) in g else g[c]
                 lv = (loss or {}).get((c, t), (loss or {}).get(c, 0.50))
@@ -62,12 +63,78 @@ def test_base_tudo_atendida(tmp_path):
     assert all(abs(v - 0.10) < 0.01 for v in R.serie(df, "fedavg_iid", "A").values())
 
 
-def test_p_rep_falhando_derruba_tudo(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={("fedavg_iid", "B"): 0.04})   # 0,04 − 0 < δ em B
-    assert dec["p_rep"]["ok"] is False
+def test_p_rep_falhando_so_em_b(tmp_path):
+    _, _, dec = rodar(tmp_path, gaps={("fedavg_iid", "B"): 0.04})   # 0,04 − 0 < δ em B; A segue avaliada
+    assert dec["p_rep"]["validas"] == ["A"] and dec["p_rep"]["ok"] is False
     for h in dec["hip"].values():
-        assert h["geral"] == R.MSG_PREP
+        assert h["vers"]["B"] == R.MSG_PREP
+        assert h["vers"]["A"] in ("atendida", "não atendida", "parcial") and h["vers"]["A"] != R.MSG_PREP
+    assert dec["hip"]["H_dados"]["geral"] == "atendida (só na tarefa A)"
+    assert dec["hip"]["H_cópias"]["geral"] == "atendida (só na tarefa A)"
+    assert dec["hip"]["H_K"]["geral"] == "atendida (só na tarefa A)"
+    assert dec["hip"]["H_K"]["base"] == "atendida" and dec["hip"]["H_K"]["rotulo"] == " (só na tarefa A)"
+    # previsão pelo veredito-base, rótulo ao lado
+    pv = {j["item"]: j for j in R.julgar_previsao(dec)}
+    assert [pv[i]["julgamento"] for i in ("H_dados", "H_cópias", "H_K")] == ["erra", "erra", "acerta"]
+    assert pv["H_K"]["rotulo"] == "(só na tarefa A)" and pv["H_K"]["calculado"] == "atendida (só na tarefa A)"
+
+
+def test_p_rep_falhando_so_em_a(tmp_path):
+    _, _, dec = rodar(tmp_path, gaps={("fedavg_iid", "A"): 0.04, ("copias_k5", "B"): 0.1, ("copias_k10", "B"): 0.1,
+                                      ("copias_k25", "B"): 0.1})
+    assert dec["p_rep"]["validas"] == ["B"]
+    assert dec["hip"]["H_cópias"]["vers"]["A"] == R.MSG_PREP
+    assert dec["hip"]["H_cópias"]["geral"] == "não atendida (só na tarefa B)"
+    assert dec["hip"]["H_dados"]["geral"] == "não atendida (só na tarefa B)"   # copias_k10 B = fedavg_iid B
+    pv = {j["item"]: j["julgamento"] for j in R.julgar_previsao(dec)}
+    assert pv["H_cópias"] == "acerta" and pv["H_dados"] == "acerta"
+
+
+def test_p_rep_falhando_nas_duas(tmp_path):
+    _, _, dec = rodar(tmp_path, gaps={"fedavg_iid": 0.04})
+    assert dec["p_rep"]["validas"] == []
+    for h in dec["hip"].values():
+        assert h["geral"] == R.MSG_PREP and h["rotulo"] == ""
     assert {j["julgamento"] for j in R.julgar_previsao(dec)} == {"não conta"}
+
+
+def test_parcial_so_na_tarefa_a_e_inconclusivo_sozinho(tmp_path):
+    g = {("fedavg_iid", "B"): 0.04, "copias_k25": 0.14}   # B falha P_rep; em A, H_dados parcial
+    _, _, dec = rodar(tmp_path, gaps=g)
+    assert dec["hip"]["H_dados"]["geral"] == "parcial (só na tarefa A)"
+    assert {j["item"]: j["julgamento"] for j in R.julgar_previsao(dec)}["H_dados"] == "acerta em parte"
+    g = {("particao_iid_k5", "A"): 0.002, ("fedavg_iid", "A"): 0.004, ("particao_iid_k25", "A"): 0.006,
+         ("sem_media_k1", "A"): -0.2, ("fedavg_iid", "B"): 0.04}
+    _, _, dec = rodar(tmp_path / "i", gaps=g)
+    assert dec["hip"]["H_K"]["vers"]["A"] == R.SEM_FAIXA
+    assert dec["hip"]["H_K"]["geral"] == "parcial (só na tarefa A)"
+
+
+def test_p_rep_por_elegibilidade_do_sem_media_k1_em_b(tmp_path):
+    # perda do sem_media_k1 muito diferente só em B: P_rep não avaliável em B; A segue válida, mas o geral é "não avaliável"
+    _, _, dec = rodar(tmp_path, loss={("sem_media_k1", "B"): 0.9})
+    assert dec["p_rep"]["por"]["A"]["ok"] is True and dec["p_rep"]["por"]["B"]["ok"] is None
+    assert "nível de aprendizado diferente" in dec["p_rep"]["por"]["B"]["msg"]
+    assert dec["hip"]["H_dados"]["vers"]["A"] in ("atendida", "parcial", "não atendida")
+    assert dec["hip"]["H_dados"]["vers"]["B"].startswith("não avaliável")
+    for h in dec["hip"].values():
+        assert h["geral"].startswith("não avaliável") and h["rotulo"] == ""
+    assert {j["julgamento"] for j in R.julgar_previsao(dec)} == {"não conta"}
+
+
+def test_p_rep_por_falta_de_semente_em_b(tmp_path):
+    _, _, dec = rodar(tmp_path, sem_arq_t={("sem_media_k1", "B", 20)})
+    assert dec["p_rep"]["por"]["A"]["ok"] is True and dec["p_rep"]["por"]["B"]["ok"] is None
+    assert "semente(s) 20" in dec["p_rep"]["por"]["B"]["msg"]
+    assert dec["hip"]["H_K"]["geral"].startswith("não avaliável") and "B:" in dec["hip"]["H_K"]["geral"]
+    assert dec["hip"]["H_K"]["vers"]["A"] == "atendida"
+
+
+def test_so_a_valida_e_hipotese_nao_avaliavel_em_a(tmp_path):
+    # B falha P_rep; em A falta uma semente de copias_k10: não avaliável por outro motivo (precedência)
+    _, _, dec = rodar(tmp_path, gaps={("fedavg_iid", "B"): 0.04}, sem_arq_t={("copias_k10", "A", 19)})
+    assert dec["hip"]["H_dados"]["geral"].startswith("não avaliável")
+    assert dec["hip"]["H_K"]["geral"] == "atendida (só na tarefa A)"
 
 
 def test_p_rep_exige_inf_acima_de_delta(tmp_path):
@@ -78,20 +145,20 @@ def test_p_rep_exige_inf_acima_de_delta(tmp_path):
 # ---------------------------------------------------------------- H_dados
 
 def test_h_dados_nao_atendida(tmp_path):
-    cop = {"copias_k5": 0.06, "copias_k10": 0.10, "copias_k20": 0.14}
+    cop = {"copias_k5": 0.06, "copias_k10": 0.10, "copias_k25": 0.14}
     _, _, dec = rodar(tmp_path, gaps=cop)   # copias = particao: d = 0
     assert dec["hip"]["H_dados"]["geral"] == "não atendida"
 
 
 def test_h_dados_parcial_k10_e_mais_um(tmp_path):
-    # K=5 e K=10 valem; K=20 não (copias_k20 igual à partição)
-    _, _, dec = rodar(tmp_path, gaps={"copias_k20": 0.14})
+    # K=5 e K=10 valem; K=25 não (copias_k25 igual à partição)
+    _, _, dec = rodar(tmp_path, gaps={"copias_k25": 0.14})
     assert dec["hip"]["H_dados"]["por"]["A"]["veredito"] == "parcial"
     assert dec["hip"]["H_dados"]["geral"] == "parcial"
 
 
 def test_h_dados_sem_k10_nao_e_parcial(tmp_path):
-    # vale em K=5 e K=20, mas não em K=10: "não atendida"
+    # vale em K=5 e K=25, mas não em K=10: "não atendida"
     _, _, dec = rodar(tmp_path, gaps={"copias_k10": 0.10})
     assert dec["hip"]["H_dados"]["geral"] == "não atendida"
 
@@ -105,28 +172,28 @@ def test_h_dados_k2_so_reportado(tmp_path):
 # ---------------------------------------------------------------- H_cópias
 
 def test_h_copias_nao_atendida(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={"copias_k5": 0.1, "copias_k10": 0.1, "copias_k20": 0.1, "fedavg_iid": 0.2})
+    _, _, dec = rodar(tmp_path, gaps={"copias_k5": 0.1, "copias_k10": 0.1, "copias_k25": 0.1, "fedavg_iid": 0.2})
     assert dec["hip"]["H_cópias"]["geral"] == "não atendida"
 
 
 def test_h_copias_parcial(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={"copias_k20": 0.2})   # K=5 e 10 dentro de ±δ; K=20 fora
+    _, _, dec = rodar(tmp_path, gaps={"copias_k25": 0.2})   # K=5 e 10 dentro de ±δ; K=25 fora
     assert dec["hip"]["H_cópias"]["geral"] == "parcial"
 
 
 def test_h_copias_fora_em_qualquer_direcao(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={"copias_k5": -0.2, "copias_k10": -0.2, "copias_k20": -0.2})
+    _, _, dec = rodar(tmp_path, gaps={"copias_k5": -0.2, "copias_k10": -0.2, "copias_k25": -0.2})
     assert dec["hip"]["H_cópias"]["geral"] == "não atendida"
 
 
 def test_h_copias_ic_na_borda_fora(tmp_path):
     # média perto de δ: sup do IC > δ => não vale
-    _, _, dec = rodar(tmp_path, gaps={"copias_k5": 0.052, "copias_k10": 0.052, "copias_k20": 0.052})
+    _, _, dec = rodar(tmp_path, gaps={"copias_k5": 0.052, "copias_k10": 0.052, "copias_k25": 0.052})
     assert dec["hip"]["H_cópias"]["geral"] == "não atendida"
 
 
 def test_tarefas_diferentes_parcial_geral(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={("copias_k5", "B"): 0.3, ("copias_k10", "B"): 0.3, ("copias_k20", "B"): 0.3,
+    _, _, dec = rodar(tmp_path, gaps={("copias_k5", "B"): 0.3, ("copias_k10", "B"): 0.3, ("copias_k25", "B"): 0.3,
                                       ("fedavg_iid", "B"): 0.3})
     h = dec["hip"]["H_cópias"]
     assert h["vers"] == {"A": "atendida", "B": "não atendida"}
@@ -136,7 +203,7 @@ def test_tarefas_diferentes_parcial_geral(tmp_path):
 # ---------------------------------------------------------------- H_K
 
 def test_h_k_nao_atendida_ordem(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={"particao_iid_k20": 0.05, "particao_iid_k5": 0.15})
+    _, _, dec = rodar(tmp_path, gaps={"particao_iid_k25": 0.05, "particao_iid_k5": 0.15})
     assert dec["hip"]["H_K"]["geral"] == "não atendida"
 
 
@@ -151,14 +218,14 @@ def _por_semente(df, cond, tipo, valores):
 def test_h_k_ordem_ok_mas_ic_nao_acima_de_zero(tmp_path):
     d = fazer(tmp_path)
     df, calib = R.carregar(d), R.carregar_calibracao(d)
-    # médias 0,098 < 0,100 < 0,103 (ordem ok), mas gap(20) − gap(5) = ±0,03 alternando: IC contém 0
+    # médias 0,098 < 0,100 < 0,103 (ordem ok), mas gap(25) − gap(5) = ±0,03 alternando: IC contém 0
     _por_semente(df, "particao_iid_k5", "A", [0.07, 0.13] * 4)
-    _por_semente(df, "particao_iid_k20", "A", [0.10, 0.10] * 4)
+    _por_semente(df, "particao_iid_k25", "A", [0.10, 0.10] * 4)
     _por_semente(df, "fedavg_iid", "A", [0.099, 0.101] * 4)
     x = R.h_k(df, calib, "A")
     assert x["t"]["ordem"] is False   # médias 0,10 / 0,099 / 0,10: ordem estrita falha
     _por_semente(df, "particao_iid_k5", "A", [0.07, 0.12, 0.08, 0.12, 0.09, 0.11, 0.07, 0.12])    # média 0,0975
-    _por_semente(df, "particao_iid_k20", "A", [0.12, 0.07, 0.13, 0.08, 0.12, 0.10, 0.11, 0.09])   # média 0,1025
+    _por_semente(df, "particao_iid_k25", "A", [0.12, 0.07, 0.13, 0.08, 0.12, 0.10, 0.11, 0.09])   # média 0,1025
     x = R.h_k(df, calib, "A")
     assert x["t"]["ordem"] is True and x["t"]["ic_acima0"] is False
     assert x["veredito"] == "não atendida"
@@ -166,7 +233,7 @@ def test_h_k_ordem_ok_mas_ic_nao_acima_de_zero(tmp_path):
 
 def test_h_k_sem_faixa_dinamica(tmp_path):
     # as três médias a menos de 0,01 de 0 (P_rep precisa passar: fedavg_iid sobe? não: usa k1 negativa)
-    g = {"particao_iid_k5": 0.002, "fedavg_iid": 0.004, "particao_iid_k20": 0.006, "sem_media_k1": -0.2}
+    g = {"particao_iid_k5": 0.002, "fedavg_iid": 0.004, "particao_iid_k25": 0.006, "sem_media_k1": -0.2}
     _, _, dec = rodar(tmp_path, gaps=g)
     # P_rep: fedavg 0,004 − (−0,2) > δ; copias ficam em 0 (nível de H_cópias irrelevante aqui)
     assert dec["p_rep"]["ok"] is True
@@ -176,7 +243,7 @@ def test_h_k_sem_faixa_dinamica(tmp_path):
 
 
 def test_h_k_inconclusivo_e_atendida_e_parcial(tmp_path):
-    g = {("particao_iid_k5", "A"): 0.002, ("fedavg_iid", "A"): 0.004, ("particao_iid_k20", "A"): 0.006,
+    g = {("particao_iid_k5", "A"): 0.002, ("fedavg_iid", "A"): 0.004, ("particao_iid_k25", "A"): 0.006,
          ("sem_media_k1", "A"): -0.2}
     _, _, dec = rodar(tmp_path, gaps=g)
     assert dec["hip"]["H_K"]["vers"]["A"] == R.SEM_FAIXA
@@ -203,16 +270,16 @@ def test_calibracao_arquivo_ausente(tmp_path):
 
 
 def test_nivel_de_aprendizado_diferente(tmp_path):
-    _, _, dec = rodar(tmp_path, loss={"copias_k20": 0.56})   # 12% acima do fedavg (0,50)
+    _, _, dec = rodar(tmp_path, loss={"copias_k25": 0.56})   # 12% acima do fedavg (0,50)
     h = dec["hip"]["H_dados"]
-    assert h["vers"]["A"] == "não avaliável (K=20: não avaliável (nível de aprendizado diferente))"
+    assert h["vers"]["A"] == "não avaliável (K=25: não avaliável (nível de aprendizado diferente))"
     assert h["geral"].startswith("não avaliável")
     assert dec["hip"]["H_K"]["geral"] == "atendida"
 
 
 def test_nivel_dentro_de_10_por_cento_e_elegivel(tmp_path):
-    df, calib, dec = rodar(tmp_path, loss={"copias_k20": 0.54})
-    assert R.elegibilidade(df, calib, "copias_k20", "A")["elegivel"]
+    df, calib, dec = rodar(tmp_path, loss={"copias_k25": 0.54})
+    assert R.elegibilidade(df, calib, "copias_k25", "A")["elegivel"]
     assert dec["hip"]["H_dados"]["geral"] == "atendida"
 
 
@@ -235,13 +302,14 @@ def test_falta_semente(tmp_path):
 
 def test_falta_semente_do_fedavg_derruba_p_rep(tmp_path):
     _, _, dec = rodar(tmp_path, sem_arquivo={("fedavg_iid", 16)})
-    assert dec["p_rep"]["ok"] is None and dec["p_rep"]["msg"].startswith("não avaliável (falta")
+    for t in R.TIPOS:
+        assert dec["p_rep"]["por"][t]["ok"] is None and dec["p_rep"]["por"][t]["msg"].startswith("não avaliável (falta")
     assert dec["hip"]["H_K"]["geral"].startswith("não avaliável")
 
 
 def test_p_rep_tambem_passa_pela_elegibilidade_do_sem_media_k1(tmp_path):
     _, _, dec = rodar(tmp_path, calib_ruim=(("sem_media_k1", "B"),))
-    assert dec["p_rep"]["ok"] is None and "calibração" in dec["p_rep"]["msg"]
+    assert all(dec["p_rep"]["por"][t]["ok"] is None and "calibração" in dec["p_rep"]["por"][t]["msg"] for t in R.TIPOS)
     assert dec["hip"]["H_dados"]["geral"].startswith("não avaliável") and dec["hip"]["H_K"]["geral"].startswith("não avaliável")
     _, _, dec = rodar(tmp_path / "ok")
     assert dec["p_rep"]["ok"] is True
@@ -263,7 +331,7 @@ def test_semente_1000_e_descartada(tmp_path):
 
 # ---------------------------------------------------------------- relatórios à parte, épocas, mecanismo
 
-def test_relato_gap20_menos_gap5(tmp_path):
+def test_relato_gap25_menos_gap5(tmp_path):
     df, calib, dec = rodar(tmp_path)
     x = dec["hip"]["H_K"]["por"]["A"]["t"]
     assert x["ic_acima0"] is True and x["c"]["inf"] > 0
@@ -271,7 +339,7 @@ def test_relato_gap20_menos_gap5(tmp_path):
 
 
 def test_epocas_sem_veredito_e_contrastes(tmp_path):
-    df, calib, _ = rodar(tmp_path, gaps={"particao_epocas_k20": 0.12})
+    df, calib, _ = rodar(tmp_path, gaps={"particao_epocas_k25": 0.12})
     b = R.braco_epocas(df, calib, "A")
     assert "veredito" not in b
     assert b["dk"][5]["c"]["media"] == pytest.approx(0.04, abs=0.01)
@@ -294,7 +362,7 @@ def _prev(dec):
 
 
 def test_previsao_acerta(tmp_path):
-    g = {"copias_k5": 0.2, "copias_k10": 0.2, "copias_k20": 0.2}   # d_K < 0 (H_dados) e longe de k1 (H_cópias)
+    g = {"copias_k5": 0.2, "copias_k10": 0.2, "copias_k25": 0.2}   # d_K < 0 (H_dados) e longe de k1 (H_cópias)
     _, _, dec = rodar(tmp_path, gaps=g)
     assert dec["hip"]["H_dados"]["geral"] == "não atendida" and dec["hip"]["H_cópias"]["geral"] == "não atendida"
     assert _prev(dec) == {"H_dados": "acerta", "H_cópias": "acerta", "H_K": "acerta"}
@@ -303,14 +371,14 @@ def test_previsao_acerta(tmp_path):
 def test_previsao_erra(tmp_path):
     _, _, dec = rodar(tmp_path)   # base: H_dados, H_cópias, H_K todas atendidas
     assert _prev(dec) == {"H_dados": "erra", "H_cópias": "erra", "H_K": "acerta"}
-    _, _, dec2 = rodar(tmp_path / "x", gaps={"particao_iid_k20": 0.05, "particao_iid_k5": 0.15})
+    _, _, dec2 = rodar(tmp_path / "x", gaps={"particao_iid_k25": 0.05, "particao_iid_k5": 0.15})
     assert _prev(dec2)["H_K"] == "erra"
 
 
 def test_previsao_acerta_em_parte_e_nao_conta(tmp_path):
-    _, _, dec = rodar(tmp_path, gaps={"copias_k20": 0.14})   # H_dados parcial
+    _, _, dec = rodar(tmp_path, gaps={"copias_k25": 0.14})   # H_dados parcial
     assert _prev(dec)["H_dados"] == "acerta em parte"
-    _, _, dec2 = rodar(tmp_path / "y", loss={"copias_k20": 0.7})
+    _, _, dec2 = rodar(tmp_path / "y", loss={"copias_k25": 0.7})
     assert _prev(dec2)["H_dados"] == "não conta" and _prev(dec2)["H_cópias"] == "não conta"
 
 

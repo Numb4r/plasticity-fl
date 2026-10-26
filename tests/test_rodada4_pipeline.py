@@ -55,7 +55,7 @@ def _treino_direto(cond, tarefa, R):
 
 @pytest.mark.parametrize("nome,hp", [("fedprox", 0.1), ("sem_media_k1", None), ("central_aprendizado", None),
                                      ("gossip_anel", None), ("fedrep", None), ("fed_sp", 0.8), ("fed_redo_fed", 0.5),
-                                     ("particao_iid_k20", None), ("copias_k5", None), ("particao_epocas_k5", None)])
+                                     ("particao_iid_k25", None), ("copias_k5", None), ("particao_epocas_k5", None)])
 def test_calibrar_R_e_exata_e_escolhe_o_menor_erro(nome, hp, tmp_path):
     cond = condicao_r4(nome, "A", tmp_path, hp=hp, rodadas=3, T=3)
     cal = calibrar_R(cond, "A", tmp_path, tmp_path / "c.json", grade=(2, 3, 4), T=3, alvo_csv=_alvo(tmp_path))

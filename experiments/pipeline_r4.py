@@ -27,11 +27,12 @@ import torch
 from experiments.calibrar_r4 import arq_alvo, calibrar_R
 from src.condicoes import _base_arquivo, csv_valido, executar, pasta_calib
 from src.condicoes_r4 import CATALOGO, COMBINACOES, DEPENDE, arq_selecao, condicao_r4, tem_hp
-from src.config import NIVEL_R2, R_BASE_R4, SEMENTE_CALIB, SEMENTES_R3, SEMENTES_R4, T_PADRAO
+from src.config import NIVEL_R2, R_BASE_R4, R_GRADE_R3, R_GRADE_R4, SEMENTE_CALIB, SEMENTES_R3, SEMENTES_R4, T_PADRAO
 
 logger = logging.getLogger(__name__)
 DIRS = {"3": "results_rodada3", "4a": "results_rodada4a", "4b": "results_rodada4b"}
 SEMENTES_PARTE = {"3": SEMENTES_R3, "4a": SEMENTES_R4, "4b": SEMENTES_R4}
+GRADE_PARTE = {"3": R_GRADE_R3, "4a": R_GRADE_R4, "4b": R_GRADE_R4}    # grade de R da calibração (rodada 3: 30 a 300)
 LIMITE_APRENDE = 0.2        # teste curto: PARE se o fedavg_iid (R pequeno) fica abaixo disto (o acaso é 0,1)
 FALHAS: list[str] = []
 # segundos de CPU de uma execução de T=30 com diagnósticos, R = 75. MEDIDOS só fedavg_iid, sem_media_k1 e
@@ -41,8 +42,8 @@ CUSTO_S = {"fedavg_iid": 400, "fedprox": 440, "scaffold": 540, "fedrep": 400, "g
            "fed_l2": 410, "fed_l2init": 430, "fed_redo_local": 470, "fed_sp": 400, "fed_redo_fed": 450, "fed_l2_sp": 420,
            "fed_l2init_sp": 440, "fed_redo_ambos": 520, "fed_sp_rodada": 400, "fed_redo_fed_voto": 450, "central_l2": 90,
            # rodada 3: o custo vai com K x S (K = 10, S = 15 custa 400 s); suposições por analogia
-           "particao_iid_k2": 160, "particao_iid_k5": 250, "particao_iid_k20": 700, "copias_k2": 160, "copias_k5": 250,
-           "copias_k10": 400, "copias_k20": 700, "particao_epocas_k2": 400, "particao_epocas_k5": 400, "particao_epocas_k20": 430}
+           "particao_iid_k2": 160, "particao_iid_k5": 250, "particao_iid_k25": 1000, "copias_k2": 160, "copias_k5": 250,
+           "copias_k10": 400, "copias_k25": 1000, "particao_epocas_k2": 400, "particao_epocas_k5": 400, "particao_epocas_k25": 400}
 R_ESTIMADO = (60, 110)      # R calibrado suposto (a grade é 50 a 200)
 
 
@@ -89,14 +90,14 @@ def arq_calibracao(dir_r4: Path, nome: str, tarefa: str, hp=None) -> Path:
     return pasta_calib(Path(dir_r4)) / f"calibracao_R_{nome}{_sufixo_hp(hp)}_{tarefa}_m{NIVEL_R2}.json"
 
 
-def job_calibrar(nome: str, tarefa: str, hp, dir_r4: str) -> dict:
+def job_calibrar(nome: str, tarefa: str, hp, dir_r4: str, parte: str = "4a") -> dict:
     arq = arq_calibracao(Path(dir_r4), nome, tarefa, hp)
     if arq.exists():                                          # só reaproveita se o alvo é o mesmo (senão recalibra)
         antigo = json.loads(arq.read_text())
         if antigo.get("alvo_sha256") == hashlib.sha256(arq_alvo(Path(dir_r4), tarefa).read_bytes()).hexdigest():
             return antigo
     cond = condicao_r4(nome, tarefa, Path(dir_r4), hp=hp, rodadas=R_BASE_R4)
-    return calibrar_R(cond, tarefa, Path(dir_r4), arq)
+    return calibrar_R(cond, tarefa, Path(dir_r4), arq, grade=GRADE_PARTE[parte])
 
 
 def job_selecao_run(nome: str, tarefa: str, hp, rodadas: int, dir_r4: str) -> str:
@@ -136,14 +137,14 @@ def escolher_hp(nome: str, tarefa: str, dir_r4: Path) -> dict:
     return res
 
 
-def job_selecao_final(nome: str, tarefa: str, dir_r4: str) -> dict:
+def job_selecao_final(nome: str, tarefa: str, dir_r4: str, parte: str = "4a") -> dict:
     """Condições sem grade (e as combinações): calibra R com o hiperparâmetro derivado e grava a seleção."""
     d = Path(dir_r4)
     hp = None
     if nome in COMBINACOES:
         from src.condicoes_r4 import hp_de
         hp = hp_de(nome, tarefa, d)
-    cal = job_calibrar(nome, tarefa, hp if nome in COMBINACOES else None, dir_r4)
+    cal = job_calibrar(nome, tarefa, hp if nome in COMBINACOES else None, dir_r4, parte)
     return gravar_selecao(d, nome, tarefa, hp, cal)
 
 
@@ -176,7 +177,7 @@ def estimar(parte: str) -> dict:
                 unidade = 0.0116 * K * (-(-3 * (1000 // K) // 20) / 15 if "epocas" in n else 1.0)
             if n.startswith("diloco"):
                 unidade *= {"diloco_h15": 1, "diloco_h50": 50 / 15, "diloco_h150": 10}[n]
-            cal += ncand * 2 * 16 * 200 * unidade
+            cal += ncand * 2 * 16 * max(GRADE_PARTE[parte]) * unidade
             if grade[n]:
                 sel += ncand * 2 * 0.6 * _custo_exec(n, R)       # corrida de T=30 na semente 1000, sem diagnósticos
         base = 2 * (CUSTO_S["fedavg_iid"] * 0.6)                  # fedavg_iid na semente 1000 (alvo)
@@ -199,9 +200,9 @@ def _etapa(ex, dir_r4: Path, parte: str, nomes: list[str]) -> None:
         for tarefa in ("A", "B"):
             if cat[nome][0]:
                 for hp in cat[nome][0]:
-                    pedidos.append((nome, tarefa, hp, ex.submit(job_calibrar, nome, tarefa, hp, str(dir_r4))))
+                    pedidos.append((nome, tarefa, hp, ex.submit(job_calibrar, nome, tarefa, hp, str(dir_r4), parte)))
             else:
-                pedidos.append((nome, tarefa, None, ex.submit(job_selecao_final, nome, tarefa, str(dir_r4))))
+                pedidos.append((nome, tarefa, None, ex.submit(job_selecao_final, nome, tarefa, str(dir_r4), parte)))
     corridas = []
     for nome, tarefa, hp, f in pedidos:
         try:

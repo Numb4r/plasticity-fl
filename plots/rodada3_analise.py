@@ -15,15 +15,21 @@ DECISÕES DE LEITURA além do texto (também listadas na resposta do gerador):
  3. Elegibilidade pela perda: por tarefa, |média das médias por semente de loss_nova da condição − a do fedavg_iid|
     / a do fedavg_iid ≤ 0,10 (fechado); acc_nova (±0,03) só reportada. Ordem dos motivos: calibração, dados,
     nível.
- 4. Por tarefa, H_dados/H_cópias é "não avaliável" se QUALQUER dos K = 5, 10, 20 o é (não se decide com parte).
- 5. H_K: a elegibilidade exige as três condições da `particao_iid` (K = 5, 10, 20); "sem faixa dinâmica" é checada
+ 4. Por tarefa, H_dados/H_cópias é "não avaliável" se QUALQUER dos K = 5, 10, 25 o é (não se decide com parte).
+ 5. H_K: a elegibilidade exige as três condições da `particao_iid` (K = 5, 10, 25); "sem faixa dinâmica" é checada
     antes da ordem das médias.
- 6. Veredito geral: "não avaliável" tem precedência sobre "parcial"; P_rep falha ou falta = todas as hipóteses
-    "não avaliável" (os números por K continuam na tabela como descritivos). Dois "inconclusivo" ou um
-    "inconclusivo" com "atendida" = "parcial" (regra dos "demais casos"); o geral nunca é "inconclusivo".
- 7. Braço de épocas fixas: contraste d_K = gap(particao_epocas_kK) − gap(copias_kK) para K = 5, 20 (e 10 com o
+ 6. Veredito geral: "não avaliável" tem precedência sobre "parcial". P_rep é POR TAREFA (decisão do autor,
+    2026-10-26): onde falha, o veredito da tarefa é "não avaliável (a vantagem do FedAvg não se reproduziu)" (os
+    números continuam na tabela como descritivos); onde é não avaliável (falta, calibração, nível do
+    sem_media_k1), o motivo. O geral usa só as tarefas com P_rep válido; as duas = regra de antes; uma só = veredito
+    dela + " (só na tarefa X)"; nenhuma = MSG_PREP. P_rep não avaliável em alguma tarefa (falta/elegibilidade) conta
+    como "não avaliável por outro motivo" e tem precedência (leitura nossa). Dois "inconclusivo" ou um
+    "inconclusivo" com "atendida" = "parcial"; um "inconclusivo" sozinho (uma só tarefa válida) = "parcial (só na
+    tarefa X)"; o geral nunca é "inconclusivo". K = 25 no lugar de 20 em tudo.
+ 7. Braço de épocas fixas: contraste d_K = gap(particao_epocas_kK) − gap(copias_kK) para K = 5, 25 (e 10 com o
     `fedavg_iid`, que é igual a particao_epocas_k10 por igualdade); K = 2 também. Sem veredito.
- 8. Previsão: "H_cópias: não" = "não atendida" (leitura 2 do bloco de 2026-10-26); "H_K: sim" = H_K como registrada.
+ 8. Previsão: "H_cópias: não" = "não atendida" (leitura 2 do bloco de 2026-10-26); "H_K: sim" = H_K como registrada
+    (maior K = 25); o julgamento usa o veredito-base, sem o rótulo "só na tarefa X", mostrado ao lado.
     Geral "não avaliável" não conta.
 CLI: python plots/rodada3_analise.py --results results_rodada3
 """
@@ -48,13 +54,13 @@ TOL_CE = 0.10
 TOL_ACC = 0.03
 ZERO = 0.01
 TIPOS = ("A", "B")
-KS = (5, 10, 20)
+KS = (5, 10, 25)
 CALIB_FEDAVG = dict(rodadas=75, ok=True, erro_rel=0.0)
 MSG_PREP = "não avaliável (a vantagem do FedAvg não se reproduziu)"
 SEM_FAIXA = "inconclusivo (sem faixa dinâmica)"
-CONDICOES = ("fedavg_iid", "particao_iid_k2", "particao_iid_k5", "particao_iid_k20", "copias_k2", "copias_k5",
-             "copias_k10", "copias_k20", "sem_media_k1", "particao_epocas_k2", "particao_epocas_k5",
-             "particao_epocas_k20")
+CONDICOES = ("fedavg_iid", "particao_iid_k2", "particao_iid_k5", "particao_iid_k25", "copias_k2", "copias_k5",
+             "copias_k10", "copias_k25", "sem_media_k1", "particao_epocas_k2", "particao_epocas_k5",
+             "particao_epocas_k25")
 PREVISAO = (("H_dados", "não"), ("H_cópias", "não"), ("H_K", "sim"))
 
 
@@ -221,25 +227,27 @@ def elegibilidade(df, calib, cond, tipo):
 # ---------------------------------------------------------------- hipóteses
 
 def p_rep(df, calib=None):
-    """P_rep: inf do IC de gap(fedavg_iid) − gap(sem_media_k1) > +δ em A e em B. 'ok' é True/False/None (falta).
-    Com `calib`, a comparação também passa pela elegibilidade (calibração do sem_media_k1 ok e perda a até 10%):
-    se não passa, P_rep é 'não avaliável' (leitura registrada em 2026-10-26, auditoria da rodada 3)."""
-    por, faltou = {}, []
+    """P_rep POR TAREFA (decisão do autor, 2026-10-26): em cada tarefa t, o inf do IC pareado de
+    gap(fedavg_iid) − gap(sem_media_k1) > +δ, com a elegibilidade do sem_media_k1 (calibração ok nas duas tarefas e
+    perda a até 10%) e as 8 sementes completas. por[t]['ok'] é True / False / None (não avaliável em t) e
+    por[t]['msg'] é '' se True, MSG_PREP se False, ou o motivo ('não avaliável (...)') se None.
+    'validas' = tarefas com P_rep True; 'ok' (global, só informativo) = valem nas duas; 'msg' = resumo textual."""
+    por = {}
     for t in TIPOS:
         m = comparavel(df, calib, ("fedavg_iid", "sem_media_k1"), t) if calib is not None else None
         if m:
-            por[t] = dict(c=None, ok=None)
-            faltou.append(m.replace("não avaliável (", "").rstrip(")") + f" em {t}")
+            por[t] = dict(c=None, ok=None, msg=m)
             continue
         c = contraste(df, "fedavg_iid", "sem_media_k1", t)
-        por[t] = dict(c=c, ok=None if c["falta"] else bool(c["inf"] > DELTA))
         if c["falta"]:
-            faltou.append(c["falta"])
-    if faltou:
-        return dict(por=por, ok=None, msg=f"não avaliável ({'; '.join(faltou)})" if calib is not None and any(
-            ("calibração" in x or "nível" in x) for x in faltou) else f"não avaliável (falta {'; '.join(faltou)})")
-    ok = all(por[t]["ok"] for t in TIPOS)
-    return dict(por=por, ok=ok, msg="" if ok else MSG_PREP)
+            por[t] = dict(c=c, ok=None, msg=f"não avaliável (falta {c['falta']})")
+        else:
+            ok = bool(c["inf"] > DELTA)
+            por[t] = dict(c=c, ok=ok, msg="" if ok else MSG_PREP)
+    validas = [t for t in TIPOS if por[t]["ok"] is True]
+    ok = len(validas) == len(TIPOS)
+    msg = "" if ok else "; ".join(f"{t}: {por[t]['msg']}" for t in TIPOS if por[t]["ok"] is not True)
+    return dict(por=por, ok=ok, validas=validas, msg=msg)
 
 
 def _cmp(df, calib, a, b, tipo, regra):
@@ -261,7 +269,7 @@ def regra_copias(c):
 
 
 def veredito_k(porK):
-    """atendida / parcial / não atendida / não avaliável (K = 5, 10, 20)."""
+    """atendida / parcial / não atendida / não avaliável (K = 5, 10, 25)."""
     nav = [f"K={k}: {porK[k]['res']}" for k in KS if porK[k]["res"].startswith("não avaliável")]
     if nav:
         return "não avaliável (" + "; ".join(nav) + ")"
@@ -284,10 +292,10 @@ def h_copias(df, calib, tipo):
 
 
 def tendencia(df, calib, tipo, familia=cond_part):
-    """Médias por K (2, 5, 10, 20), ordem 20>10>5 e contraste gap(20) − gap(5) (sem veredito)."""
+    """Médias por K (2, 5, 10, 25), ordem 25>10>5 e contraste gap(25) − gap(5) (sem veredito)."""
     medias = {k: resumo(df, familia(k), tipo) for k in (2,) + KS}
-    c = contraste(df, familia(20), familia(5), tipo)
-    m = [medias[k]["media"] for k in (20, 10, 5)]
+    c = contraste(df, familia(25), familia(5), tipo)
+    m = [medias[k]["media"] for k in (25, 10, 5)]
     ordem = None if any(x != x for x in m) else bool(m[0] > m[1] > m[2])
     acima = None if c["falta"] or c["inf"] != c["inf"] else bool(c["inf"] > 0)
     return dict(medias=medias, ordem=ordem, c=c, ic_acima0=acima,
@@ -306,7 +314,7 @@ def h_k(df, calib, tipo):
 
 
 def geral(vers):
-    """Veredito geral a partir dos vereditos por tarefa (A, B)."""
+    """Veredito geral a partir dos vereditos por tarefa (lista, uma por tarefa considerada)."""
     nav = [v for v in vers if v.startswith("não avaliável")]
     if nav:
         return nav[0] if len(set(vers)) == 1 else "não avaliável (" + "; ".join(
@@ -318,24 +326,53 @@ def geral(vers):
     return "parcial"
 
 
+def veredito_geral(pr, por):
+    """(base, rótulo, vers): base = veredito geral sem rótulo; rótulo = '' ou ' (só na tarefa X)'; vers = veredito
+    por tarefa (MSG_PREP onde P_rep falha; o motivo onde P_rep é não avaliável; senão o da hipótese).
+    Leitura do registrador (2026-10-26): o geral usa só as tarefas com P_rep válido; 'não avaliável' por outro
+    motivo (inclusive P_rep não avaliável em alguma tarefa, falta/elegibilidade) tem precedência; uma só tarefa
+    válida dá o veredito dela com o rótulo ('inconclusivo' sozinho vira 'parcial'); nenhuma = MSG_PREP."""
+    vers = {t: pr["por"][t]["msg"] if pr["por"][t]["ok"] is not True else por[t]["veredito"] for t in TIPOS}
+    outros = [t for t in TIPOS if pr["por"][t]["ok"] is None
+              or (pr["por"][t]["ok"] and vers[t].startswith("não avaliável"))]
+    if outros:
+        iguais = len(outros) == len(TIPOS) and len({vers[t] for t in TIPOS}) == 1
+        return (vers[outros[0]] if iguais else _nav_parcial(outros, vers)), "", vers
+    validas = [t for t in TIPOS if pr["por"][t]["ok"]]
+    if not validas:
+        return MSG_PREP, "", vers
+    if len(validas) == len(TIPOS):
+        return geral([vers[t] for t in TIPOS]), "", vers
+    t = validas[0]
+    v = vers[t] if vers[t] in ("atendida", "não atendida") else "parcial"
+    return v, f" (só na tarefa {t})", vers
+
+
+def _nav_parcial(outros, vers):
+    """'não avaliável' em parte das tarefas: lista só as tarefas afetadas."""
+    return "não avaliável (" + "; ".join(f"{t}: {vers[t]}" for t in outros) + ")"
+
+
 def decidir(df, calib):
-    """Tudo: P_rep, hipóteses por tarefa e veredito geral (P_rep falho/ausente derruba todas)."""
+    """Tudo: P_rep por tarefa, hipóteses por tarefa e veredito geral (base, rótulo e texto final)."""
     pr = p_rep(df, calib)
     hip = {"H_dados": {t: h_dados(df, calib, t) for t in TIPOS},
            "H_cópias": {t: h_copias(df, calib, t) for t in TIPOS},
            "H_K": {t: h_k(df, calib, t) for t in TIPOS}}
     res = {}
     for nome, por in hip.items():
-        vers = [pr["msg"] if pr["ok"] is not True else por[t]["veredito"] for t in TIPOS]
-        res[nome] = dict(por=por, vers=dict(zip(TIPOS, vers)), geral=geral(vers))
+        base, rotulo, vers = veredito_geral(pr, por)
+        res[nome] = dict(por=por, vers=vers, base=base, rotulo=rotulo, geral=base + rotulo)
     return dict(p_rep=pr, hip=res)
 
 
 def julgar_previsao(dec):
-    """Itens da previsão do autor × veredito geral (regra do pré-registro; não avaliável não conta)."""
+    """Itens da previsão do autor × veredito-base (sem o rótulo 'só na tarefa X', que vai ao lado; regra do
+    pré-registro; não avaliável não conta). H_K refere-se ao maior K (25)."""
     out = []
     for nome, prev in PREVISAO:
-        g = dec["hip"][nome]["geral"]
+        h = dec["hip"][nome]
+        g = h["base"]
         alvo = "não atendida" if prev == "não" else "atendida"
         oposto = "atendida" if prev == "não" else "não atendida"
         if g == alvo:
@@ -346,7 +383,8 @@ def julgar_previsao(dec):
             j = "erra"
         else:
             j = "não conta"
-        out.append(dict(item=nome, previsao=prev, calculado=g, julgamento=j))
+        out.append(dict(item=nome, previsao=prev, calculado=h["geral"], base=g, rotulo=h["rotulo"].strip(),
+                        julgamento=j))
     return out
 
 
@@ -369,10 +407,10 @@ MEDIDAS_MEC = ("cos_medio", "encolhimento", "rank_ef", "srank_feat")
 
 
 def mecanismo(df, tipo):
-    """{(familia, K): {medida: resumo}} para K = 2, 5, 10, 20, mais ('sem_media_k1', 1)."""
+    """{(familia, K): {medida: resumo}} para K = 2, 5, 10, 25, mais ('sem_media_k1', 1)."""
     out = {}
     for fam, f in FAMILIAS.items():
-        for k in (2, 5, 10, 20):
+        for k in (2,) + KS:
             out[(fam, k)] = {m: resumo(df, f(k), tipo, m) for m in MEDIDAS_MEC}
     out[("sem_media_k1", 1)] = {m: resumo(df, "sem_media_k1", tipo, m) for m in MEDIDAS_MEC}
     return out

@@ -122,5 +122,6 @@ GRADE_L2_CENTRAL = (1e-6, 1e-5, 1e-4, 1e-3)   # referência central_L2 (grade es
 
 # --- Rodada 3 (PREREGISTRO.md, "Rodada 3 · Por que a média entre clientes com dados diferentes protege...") ---
 SEMENTES_R3 = (16, 17, 18, 19, 20, 21, 22, 23)
-KS_R3 = (2, 5, 10, 20)
+KS_R3 = (2, 5, 10, 25)                         # K = 25: 40 pontos por trabalhador = 2 lotes inteiros (mesmo amostrador das demais)
 EPOCAS_LOCAIS_FIXAS = 3                       # braço secundário: S_local = ceil(3 * n / batch) passos por rodada
+R_GRADE_R3 = tuple(range(30, 301))             # calibração de R na rodada 3 (decisão do autor, 2026-10-26): 30 a 300, passo 1

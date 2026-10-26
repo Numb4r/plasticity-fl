@@ -34,7 +34,7 @@ def _igual(a, b):
 
 
 def test_particionar_k_iid_cobre_tudo_sem_sobreposicao_e_k10_e_o_iid_antigo():
-    for K in (2, 5, 10, 20):
+    for K in (2, 5, 10, 25):
         partes = particionar_k("iid", 1, K)
         assert len(partes) == K and all(len(q) == 1000 // K for q in partes)
         assert torch.equal(torch.cat(partes).sort().values, torch.arange(1000))
@@ -45,7 +45,7 @@ def test_particionar_k_iid_cobre_tudo_sem_sobreposicao_e_k10_e_o_iid_antigo():
 
 
 def test_copias_sao_k_copias_dos_mesmos_1000_pontos_e_k10_e_a_particao_total():
-    for K in (2, 5, 10, 20):
+    for K in (2, 5, 10, 25):
         partes = particionar_k("copias", 1, K)
         assert len(partes) == K and all(torch.equal(q, torch.arange(1000)) for q in partes)
     assert all(torch.equal(a, b) for a, b in zip(particionar_k("copias", 1, 10), particionar("total", 1)))
@@ -75,36 +75,40 @@ def test_passos_locais_por_cliente_e_um_adam_por_cliente_por_rodada(monkeypatch)
     step, init = torch.optim.Adam.step, torch.optim.Adam.__init__
     monkeypatch.setattr(torch.optim.Adam, "step", lambda self, *a, **k: (contagem.__setitem__("passos", contagem["passos"] + 1), step(self, *a, **k))[1])
     monkeypatch.setattr(torch.optim.Adam, "__init__", lambda self, *a, **k: (contagem.__setitem__("adams", contagem["adams"] + 1), init(self, *a, **k))[0])
-    for tec, passos_por_cliente in (({"tipo": "fedavg", "K": 2, "modo": "iid"}, 15), ({"tipo": "fedavg", "K": 20, "modo": "iid"}, 15),
-                                    ({"tipo": "fedavg", "K": 2, "modo": "iid", "S": 75}, 75), ({"tipo": "fedavg", "K": 20, "modo": "iid", "S": 8}, 8),
+    for tec, passos_por_cliente in (({"tipo": "fedavg", "K": 2, "modo": "iid"}, 15), ({"tipo": "fedavg", "K": 25, "modo": "iid"}, 15),
+                                    ({"tipo": "fedavg", "K": 2, "modo": "iid", "S": 75}, 75), ({"tipo": "fedavg", "K": 25, "modo": "iid", "S": 6}, 6),
                                     ({"tipo": "fedavg", "K": 5, "modo": "copias"}, 15)):
         contagem.update(passos=0, adams=0)
         _fedx(tec, rodadas=2)
         assert contagem["passos"] == tec["K"] * passos_por_cliente * 2 and contagem["adams"] == tec["K"] * 2, tec
 
 
-def test_k20_usa_o_caminho_geral_porque_50_pontos_nao_sao_multiplo_do_lote():
-    _, _, (X, y, part) = _fedx({"tipo": "fedavg", "K": 20, "modo": "iid"}, rodadas=1)
-    assert all(len(q) == 50 for q in part) and 50 % config.BATCH != 0
-    m, _, _ = _fedx({"tipo": "fedavg", "K": 20, "modo": "iid"}, rodadas=2)
+def test_k25_tem_40_pontos_2_lotes_inteiros_e_usa_o_mesmo_amostrador_das_demais(monkeypatch):
+    chamadas = {"geral": 0, "ext": 0}
+    geral, ext = tf.treinar_passos_geral, tf.treinar_passos_ext
+    monkeypatch.setattr(tf, "treinar_passos_geral", lambda *a, **k: (chamadas.__setitem__("geral", chamadas["geral"] + 1), geral(*a, **k))[1])
+    monkeypatch.setattr(tf, "treinar_passos_ext", lambda *a, **k: (chamadas.__setitem__("ext", chamadas["ext"] + 1), ext(*a, **k))[1])
+    m, _, (X, y, part) = _fedx({"tipo": "fedavg", "K": 25, "modo": "iid"}, rodadas=2)
+    assert all(len(q) == 40 for q in part) and 40 % config.BATCH == 0 and 40 // config.BATCH == 2
+    assert chamadas["geral"] == 0 and chamadas["ext"] == 25 * 2                # nenhum cliente cai no caminho geral
     assert all(torch.isfinite(v).all() for v in m.state_dict().values())
 
 
 def test_braco_de_epocas_fixas_tem_s_igual_a_teto_de_3n_sobre_20_e_k10_nao_existe():
-    esperado = {2: 75, 5: 30, 20: 8}
+    esperado = {2: 75, 5: 30, 25: 6}
     for K, S in esperado.items():
         c = condicao_r4(f"particao_epocas_k{K}", "A", Path("/tmp/x"), rodadas=3)
         assert json.loads(c.tec)["S"] == S and c.s_local == S and json.loads(c.tec)["K"] == K
     assert "particao_epocas_k10" not in CATALOGO_3 and "particao_iid_k10" not in CATALOGO_3        # uniões: K=10 é o fedavg_iid
-    m10, _, _ = _fedx({"tipo": "fedavg", "K": 10, "modo": "iid", "S": 15})                           # 3 épocas de 100 pontos = 15 passos
+    m10, _, _ = _fedx({"tipo": "fedavg", "K": 10, "modo": "iid", "S": 15})                           # 3 épocas de 100 pontos = 15 passos; em K = 25, 6 passos = 3 épocas exatas de 40 pontos
     assert _igual(m10, _fedx({"tipo": "fedavg"})[0])
 
 
 def test_condicoes_da_rodada_3_tec_particao_e_k(tmp_path):
     c = condicao_r4("particao_iid_k5", "A", tmp_path, rodadas=4)
     assert (c.familia, c.particao, json.loads(c.tec)) == ("fedx", "iid", {"K": 5, "modo": "iid", "tipo": "fedavg"})
-    c = condicao_r4("copias_k20", "B", tmp_path, rodadas=4)
-    assert (c.particao, json.loads(c.tec)["K"], json.loads(c.tec)["modo"]) == ("copias", 20, "copias")
+    c = condicao_r4("copias_k25", "B", tmp_path, rodadas=4)
+    assert (c.particao, json.loads(c.tec)["K"], json.loads(c.tec)["modo"]) == ("copias", 25, "copias")
     assert condicao_r4("sem_media_k1", "A", tmp_path, rodadas=4).familia == "fl"
     assert particoes_da_condicao(condicao_r4("fedavg_iid", "A", tmp_path, rodadas=4), 1)[0].shape == (100,)
     assert len(particoes_da_condicao(condicao_r4("copias_k5", "A", tmp_path, rodadas=4), 1)) == 5
