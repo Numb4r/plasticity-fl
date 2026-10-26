@@ -470,4 +470,7 @@ As rodadas 1 a 2b ficam como estão (tag `rodada2-final`). Leitura exploratória
 144 execuções das condições base (9 condições) mais 48 do braço de épocas fixas, 192 no total (2 tarefas × 8 sementes), da ordem de 25 CPU-h com a calibração; de 1 a 2 h no cluster com 20 processos. Ordem: este pré-registro → previsão do autor, commitada sozinha, e o hash anotado → implementação, testes e auditoria pré-execução, sem rodar → teste curto e completo no cluster → auditoria dos resultados antes de interpretar; leituras novas entram como exploratórias nos Desvios.
 
 ### Previsão do autor (rodada 3)
-(a preencher pelo autor, antes de qualquer código da rodada 3)
+Previsão do autor (rodada 3), escrita em 2026-10-26, antes de qualquer implementação. Confiança média.
+- H_dados: não. Prevejo que, para K em {5, 10, 20}, dados diferentes não protegem mais que cópias dos mesmos dados acima da margem δ = 0,05.
+- H_cópias: não. Prevejo que tirar a média de cópias dos mesmos dados muda o gap em relação ao sem_media_k1, além da margem δ = 0,05, sem prever a direção.
+- H_K: sim. Prevejo que, com dados particionados, o gap com K=20 é melhor que com K=5.
