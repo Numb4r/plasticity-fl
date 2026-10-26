@@ -6,9 +6,13 @@ semente 1000 para a perda da rede nova ficar a até 10% da do `fedavg_iid` K=10)
 
 O que foi unido por ser matematicamente igual (nada duplicado):
   gossip com grafo completo = fedavg_iid (mesmas contas, bit a bit); fica só como teste;
-  shrink-and-perturb no cliente = no servidor: o encolhimento é linear e comuta com a média, e o ruído
-  independente de K clientes tem variância sigma^2/K depois da média; só existe a versão do servidor
-  (por tarefa = primário; por rodada = exploratório); e "cliente e servidor" = servidor.
+  shrink-and-perturb no cliente ~ no servidor: o encolhimento é linear e comuta com a média; se cada cliente o aplica
+  ao próprio modelo logo ANTES de enviá-lo, o ruído independente de K clientes tem variância sigma^2/K depois da média,
+  isto é, é o SP do servidor com sigma/sqrt(K) (essa versão não é uma condição e não foi testada; se o SP do cliente
+  fosse aplicado ao RECEBER o modelo, os clientes partiriam de pontos diferentes e a equivalência some). Só existe a
+  versão do servidor (por tarefa = primário, sigma = 0,01; por rodada = exploratório, aplicada antes de difundir nas
+  rodadas 1, 2, ...). "Cliente e servidor" NÃO é igual a "servidor": seria lambda_c*lambda_s com variância
+  sigma^2*(lambda_s^2/K + 1); essa combinação não entra.
 """
 import json
 from pathlib import Path

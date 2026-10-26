@@ -1,5 +1,5 @@
 #!/bin/bash
-# Traz os resultados da rodada 2 de ~/plasticidade (cluster) para o projeto local.
+# Traz os resultados (rodada 2, 2b, 4a ou 4b) de ~/plasticidade (cluster) para o projeto local.
 #   results_rodada2/  (CSVs, JSONs de seleção/calibração, teste curto, tempo_*.json)  -> ./results_rodada2/
 #   logs/             (saída dos jobs do Slurm, slurm-*.out)                          -> ./logs/cluster/
 # Nunca apaga nada local (sem --delete) e só substitui um arquivo local se o remoto for mais novo (--update).

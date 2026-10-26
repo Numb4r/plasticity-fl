@@ -147,12 +147,13 @@ def test_verificador_acusa_o_que_falta_e_pega_o_log_da_rodada_errada(tmp_path):
     erros, n = v.verificar(tmp_path, "4a", None)
     assert n == 176 and any("teste curto" in e for e in erros) and any("selecao_hp_fedprox_A" in e for e in erros)
     log = tmp_path / "log.txt"
-    log.write_text("INFO: tempos: {}\nINFO calibração fedprox A hp=0.1: R=80\n")
+    log.write_text("INFO: tempos: {}\nINFO RODADA4 parte=4a fase=completo iniciada\n")
     erros, _ = v.verificar(tmp_path, "4a", log)
     assert not any("não é do completo" in e for e in erros)
-    log.write_text("INFO: tempos: {}\ncalibração central_HT_cal2 A\n".replace("calibração ", "outra "))
-    erros, _ = v.verificar(tmp_path, "4a", log)
-    assert any("não é do completo" in e for e in erros)
+    for errado in ("INFO: tempos: {}\nINFO calibração central_HT_cal2 A hp=0.1: R=80\n",       # log da rodada 2b
+                   "INFO: tempos: {}\nINFO RODADA4 parte=4b fase=completo iniciada\n"):      # log da outra parte
+        log.write_text(errado)
+        assert any("não é do completo" in e for e in v.verificar(tmp_path, "4a", log)[0])
     log.write_text("PARE: algo\n")
     assert any("PARE" in e for e in v.verificar(tmp_path, "4a", log)[0])
 
@@ -201,3 +202,34 @@ def test_teste_curto_acusa_remedio_que_nao_age(tmp_path, monkeypatch):
     monkeypatch.setitem(p.TC_HP, "fed_l2", 0.0)                            # L2 com lambda 0 = FedAvg: não age
     assert p.fase_teste_curto(_Serial(), tmp_path, "4b") == 3
     assert "fed_l2: resultado idêntico ao do fedavg_iid" in (tmp_path / "calibracao" / "teste_curto" / "RESULTADO.txt").read_text()
+
+
+def test_calibrar_R_ignora_perda_nao_finita(tmp_path, monkeypatch):
+    import experiments.calibrar_r4 as c4
+    estado = {"r": 0}
+    perdas = {1: 0.5, 2: float("nan"), 3: 1.0}
+
+    def falso(cond, nova, X, y, particoes, g, extra, aux, cb):
+        for r in (1, 2, 3):
+            estado["r"] = r
+            cb(nova, extra, r)
+
+    monkeypatch.setattr(c4, "treinar_na_tarefa", falso)
+    monkeypatch.setattr(c4, "avaliar_cond", lambda *a, **k: (0.0, perdas[estado["r"]]))
+    cond = condicao_r4("sem_media_k1", "A", tmp_path, rodadas=3, T=3)
+    cal = c4.calibrar_R(cond, "A", tmp_path, tmp_path / "c.json", grade=(1, 2, 3), T=3, alvo_csv=_alvo(tmp_path, 0.95))
+    assert cal["rodadas"] == 3 and cal["ok"] is True                           # o R=2 (NaN) nunca é escolhido, nem com o alvo ao lado
+
+
+def test_cache_da_calibracao_so_vale_com_o_mesmo_alvo(tmp_path):
+    arq_alvo = p.arq_alvo(tmp_path, "A")
+    arq_alvo.parent.mkdir(parents=True)
+    pd.DataFrame({"loss_nova": [1.0] * 3}).to_csv(arq_alvo, index=False)
+    import hashlib
+    sha = hashlib.sha256(arq_alvo.read_bytes()).hexdigest()
+    arq = p.arq_calibracao(tmp_path, "fedprox", "A", 0.1)
+    arq.write_text(json.dumps({"rodadas": 99, "erro_rel": 0.0, "ok": True, "alvo_sha256": sha}))
+    assert p.job_calibrar("fedprox", "A", 0.1, str(tmp_path))["rodadas"] == 99     # mesmo alvo: reaproveita
+    arq.write_text(json.dumps({"rodadas": 99, "erro_rel": 0.0, "ok": True, "alvo_sha256": "outro"}))
+    with pytest.raises(Exception):                                                  # alvo diferente: recalibra (aqui falha: T=30 esperado)
+        p.job_calibrar("fedprox", "A", 0.1, str(tmp_path))

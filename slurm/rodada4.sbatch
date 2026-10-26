@@ -13,10 +13,11 @@ set -uo pipefail
 PARTE="${1:?parte: 4a|4b}"
 FASE="${2:?fase: teste_curto|completo}"
 PROC="${3:-8}"
-case "$SLURM_JOB_NAME" in
-    "r${PARTE}_"*) ;;
-    *) echo "ERRO: este job faz a parte $PARTE e se chama '$SLURM_JOB_NAME' (esperado r${PARTE}_curto ou r${PARTE}_longo). Use bash slurm/rodada${PARTE}.sh curto|longo." >&2; exit 4 ;;
-esac
+ESPERADO="r${PARTE}_curto"; [[ "$FASE" == "completo" ]] && ESPERADO="r${PARTE}_longo"
+if [[ "$SLURM_JOB_NAME" != "$ESPERADO" ]]; then
+    echo "ERRO: a parte $PARTE, fase $FASE, pede o job '$ESPERADO' e este se chama '$SLURM_JOB_NAME'. Use bash slurm/rodada${PARTE}.sh curto|longo." >&2
+    exit 4
+fi
 cd "$HOME/plasticidade"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PLAST_DISPOSITIVO=cpu PYTHONUNBUFFERED=1
 echo "no=$(hostname) parte=$PARTE fase=$FASE processos=$PROC job=$SLURM_JOB_ID inicio=$(date -Is)"

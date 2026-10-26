@@ -70,7 +70,7 @@ def _fedavg_ref(rodadas=2, sem=1, t=0):
 
 
 def test_papel_novo_vai_no_fim_e_os_antigos_nao_mudam():
-    assert PAPEIS[-1] == "redo_reinicio" and PAPEIS[:22][-1] == "reaprende_nova"
+    assert PAPEIS[-2:] == ("redo_reinicio", "sp_rodada") and PAPEIS[:22][-1] == "reaprende_nova"
     assert semente(1, "dados") == semente(1, "dados")
 
 
@@ -303,20 +303,42 @@ def test_redo_local_age_so_no_cliente_e_o_federado_so_no_servidor_no_ritmo_certo
         assert len(alvos) == esperado_total and alvos.count(id(mm)) == esperado_global
 
 
-def test_sp_por_rodada_e_encolhimento_e_sp_cliente_e_servidor_sao_a_mesma_coisa(monkeypatch):
+def test_sp_por_rodada_age_antes_de_difundir_nunca_depois_da_ultima_rodada(monkeypatch):
     monkeypatch.setattr(tf, "SP_RUIDO", 0.0)
-    m, _, _ = _rodar({"tipo": "fedavg", "sp_rodada": 0.5}, rodadas=1)
-    ref, _ = _fedavg_ref(1)
-    assert all(torch.allclose(a, 0.5 * b, atol=1e-6) for a, b in zip(m.state_dict().values(), ref.state_dict().values()))
-    # união SP cliente = SP servidor: o encolhimento é linear e comuta com a média ponderada
+    tec = {"tipo": "fedavg", "sp_rodada": 0.5}
+    m1, _, _ = _rodar(tec, rodadas=1)
+    assert _igual(m1, _fedavg_ref(1)[0])                                   # com 1 rodada o SP não age: o modelo medido não é perturbado
+    m2, _, _ = _rodar(tec, rodadas=2)                                      # na rodada 2, o modelo é encolhido ANTES de difundir
+    X, y, part, ref = _base()
+    g = gerador(1, "embaralha_continua", 0)
+    treinar_fedavg(ref, X, y, part, g, 1)
+    with torch.no_grad():
+        for p_ in ref.parameters():
+            p_.mul_(0.5)
+    treinar_fedavg(ref, X, y, part, g, 1)                                  # o gerador continua de onde parou
+    assert _igual(m2, ref)
+
+
+def test_uniao_do_sp_cliente_e_servidor_vale_com_a_variancia_dividida_por_k(monkeypatch):
+    """O encolhimento é linear e comuta com a média ponderada; o ruído independente de K clientes tem variância
+    sigma^2/K depois da média. Logo 'SP no cliente (no envio)' = 'SP no servidor com sigma/sqrt(K)', que não é uma condição."""
     ests = [{"w": torch.randn(4, 3)} for _ in range(10)]
     a = media_ponderada([{"w": 0.7 * e["w"]} for e in ests], [100] * 10)["w"]
     b = 0.7 * media_ponderada(ests, [100] * 10)["w"]
     assert torch.allclose(a, b, atol=1e-6)
-    # e o ruído independente de K clientes tem variância sigma^2/K depois da média
     g = torch.Generator().manual_seed(0)
     ruidos = torch.stack([torch.randn(20000, generator=g) * 0.01 for _ in range(10)]).mean(0)
     assert ruidos.std().item() == pytest.approx(0.01 / np.sqrt(10), rel=0.05)
+
+
+def test_o_redo_conta_os_neuronios_reiniciados_e_zero_quer_dizer_nao_acionado():
+    for tec, chave in (({"tipo": "fedavg", "redo_local": {"tau": 0.5, "cada": 5}}, "cliente"),
+                       ({"tipo": "fedavg", "redo_fed": {"tau": 0.5, "cada": 5, "modo": "media"}}, "servidor")):
+        _, extra, _ = _rodar(tec, rodadas=1)
+        outra = "servidor" if chave == "cliente" else "cliente"
+        assert extra["redo_n"][chave] > 0 and extra["redo_n"][outra] == 0
+    _, extra, _ = _rodar({"tipo": "fedavg", "redo_fed": {"tau": 0.0, "cada": 5, "modo": "media"}}, rodadas=1)
+    assert extra["redo_n"] == {"servidor": 0, "cliente": 0}                   # tau = 0: nenhum neurônio tem score 0 no início
 
 
 def test_avaliar_cond_de_condicoes_antigas_e_o_modelo_e_o_gossip_e_media_dos_clientes(tmp_path):
@@ -373,3 +395,14 @@ def test_sp_por_tarefa_no_fedx_encolhe_a_partir_da_segunda_tarefa_e_a_rede_nova_
     sp = executar(condicao_r4("fed_sp", "A", tmp_path, hp=0.5, rodadas=2, T=3), "A", 1, tempfile.mkdtemp(), diagnosticos=False)
     assert sp.loc[0, "acc_cont"] == base.loc[0, "acc_cont"] and sp.loc[1, "acc_cont"] != base.loc[1, "acc_cont"]
     assert sp.loc[0, "acc_nova"] != base.loc[0, "acc_nova"]                 # a rede nova leva SP desde a primeira tarefa
+
+
+def test_executar_do_fedavg_iid_da_rodada_4_e_o_mesmo_das_rodadas_2_e_3_coluna_a_coluna(tmp_path):
+    from src.condicoes import Condicao
+    antigo = Condicao("fedavg_iid", "fl", "iid", T=3, nivel=3, rodadas=3, s_local=15, sonda_versao=2, rodada=2)
+    novo = condicao_r4("fedavg_iid", "A", tmp_path, rodadas=3, T=3)
+    a = executar(antigo, "A", 1, tempfile.mkdtemp(), diagnosticos=False)
+    b = executar(novo, "A", 1, tempfile.mkdtemp(), diagnosticos=False)
+    cols = [c for c in a.columns if c not in ("cond",)]
+    pd.testing.assert_frame_equal(a[cols], b[cols], check_exact=True)
+    assert {"encolhimento", "redo_servidor", "nova_redo_cliente"} <= set(b.columns) and "encolhimento" not in a.columns

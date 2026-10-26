@@ -10,6 +10,7 @@ Resultados em results_rodada4a/ e results_rodada4b/ (a semente 1000 em .../calib
 O `completo` recusa começar sem um `teste_curto` com OK. Jobs com CSV válido são pulados (retomável).
 """
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -32,7 +33,8 @@ logger = logging.getLogger(__name__)
 DIRS = {"4a": "results_rodada4a", "4b": "results_rodada4b"}
 LIMITE_APRENDE = 0.2        # teste curto: PARE se o fedavg_iid (R pequeno) fica abaixo disto (o acaso é 0,1)
 FALHAS: list[str] = []
-# segundos de CPU de uma execução de T=30 com diagnósticos, R = 75 (medidos nas rodadas 2 e 2b, nó dl-01)
+# segundos de CPU de uma execução de T=30 com diagnósticos, R = 75. MEDIDOS só fedavg_iid, sem_media_k1 e
+# central_aprendizado (rodadas 2 e 2b, nó dl-01); os das técnicas e remédios novos são SUPOSIÇÕES por analogia
 CUSTO_S = {"fedavg_iid": 400, "fedprox": 440, "scaffold": 540, "fedrep": 400, "gossip_anel": 410, "gossip_grau4": 410,
            "diloco_h15": 400, "diloco_h50": 1330, "diloco_h150": 4000, "sem_media_k1": 130, "central_aprendizado": 85,
            "fed_l2": 410, "fed_l2init": 430, "fed_redo_local": 470, "fed_sp": 400, "fed_redo_fed": 450, "fed_l2_sp": 420,
@@ -85,8 +87,10 @@ def arq_calibracao(dir_r4: Path, nome: str, tarefa: str, hp=None) -> Path:
 
 def job_calibrar(nome: str, tarefa: str, hp, dir_r4: str) -> dict:
     arq = arq_calibracao(Path(dir_r4), nome, tarefa, hp)
-    if arq.exists():
-        return json.loads(arq.read_text())
+    if arq.exists():                                          # só reaproveita se o alvo é o mesmo (senão recalibra)
+        antigo = json.loads(arq.read_text())
+        if antigo.get("alvo_sha256") == hashlib.sha256(arq_alvo(Path(dir_r4), tarefa).read_bytes()).hexdigest():
+            return antigo
     cond = condicao_r4(nome, tarefa, Path(dir_r4), hp=hp, rodadas=R_BASE_R4)
     return calibrar_R(cond, tarefa, Path(dir_r4), arq)
 
@@ -102,7 +106,7 @@ def job_rodar(nome: str, tipo: str, sem: int, dir_r4: str) -> str:
 
 def gravar_selecao(dir_r4: Path, nome: str, tarefa: str, hp, cal: dict, notas: dict | None = None, grade=None) -> dict:
     res = {"condicao": nome, "tarefa": tarefa, "hp": hp, "rodadas": cal["rodadas"], "ok": bool(cal["ok"]),
-           "erro_rel": cal["erro_rel"], "notas": notas or {}, "borda": bool(grade and isinstance(hp, (int, float)) and hp in (grade[0], grade[-1]))}
+           "erro_rel": cal["erro_rel"], "notas": notas or {}, "borda": bool(grade and len(grade) >= 3 and isinstance(hp, (int, float)) and hp in (grade[0], grade[-1]))}
     arq_selecao(dir_r4, nome, tarefa).write_text(json.dumps(res, indent=1))
     return res
 
@@ -207,7 +211,11 @@ def _etapa(ex, dir_r4: Path, parte: str, nomes: list[str]) -> None:
     for nome in nomes:
         for tarefa in ("A", "B"):
             if cat[nome][0]:
-                escolher_hp(nome, tarefa, dir_r4)
+                try:
+                    escolher_hp(nome, tarefa, dir_r4)
+                except Exception as e:                        # noqa: BLE001 (falta de arquivo de um candidato)
+                    FALHAS.append(repr(e))
+                    logger.error("ESCOLHA DE HIPERPARÂMETRO FALHOU %s %s: %r", nome, tarefa, e)
 
 
 def fase_selecao(ex, dir_r4: Path, parte: str) -> dict:
@@ -232,6 +240,7 @@ def fase_completo(ex, dir_r4: Path, parte: str, sem_teste_curto: bool = False) -
     if not sem_teste_curto and not (res.exists() and res.read_text().startswith("OK")):
         raise SystemExit("o teste curto não deu OK (ou não rodou): rode `--fase teste_curto` e leia RESULTADO.txt. "
                          "Para ignorar, --sem-teste-curto.")
+    logger.info("RODADA4 parte=%s fase=completo iniciada", parte)     # o verificador exige esta linha
     tempos = fase_selecao(ex, dir_r4, parte)
     t0 = time.time()
     plano = sorted(plano_confirmatorio(parte), key=lambda j: _custo_exec(j[0]), reverse=True)
@@ -314,6 +323,13 @@ def avaliar_teste_curto(dir_r4: Path, parte: str) -> tuple[list[str], list[str]]
         d = df[(nome, "_tc")]
         if TC_R.get(nome, TC_R_PADRAO) == TC_R_PADRAO and b[["acc_cont", "loss_cont", "norma"]].equals(d[["acc_cont", "loss_cont", "norma"]]):
             pare.append(f"{nome}: resultado idêntico ao do fedavg_iid; a técnica/remédio não está agindo")
+    for nome in CATALOGO[parte]:                           # ReDo: o teste curto usa tau = 0,5; tem que reiniciar algo
+        d = df[(nome, "_tc")]
+        if "redo" in nome and nome != "fed_redo_ambos":
+            n = int(d[["redo_servidor", "redo_cliente"]].sum().sum())
+            info.append(f"{nome}: neurônios reiniciados no teste curto = {n}")
+            if n == 0:
+                pare.append(f"{nome}: o ReDo não reiniciou nenhum neurônio (tau = 0,5): o remédio não é acionado")
     # 4) calibração em miniatura (uma condição com hiperparâmetro), com o alvo = o fedavg_iid T=12 deste teste
     alvo = pasta / f"{_base_arquivo(_cond_tc(next(j for j in jobs if j['nome'] == 'fedavg_iid' and j['sufixo'] == '_tc'), dir_r4), 'A', SEMENTE_CALIB, '_tc')}.csv"
     nome_cal = "fedprox" if parte == "4a" else "fed_l2"

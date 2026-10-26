@@ -18,6 +18,7 @@ PAPEIS = (
     "diag_indices", "diag_hess_v0",   # diagnósticos de Klein et al. (Desvios v3.1)
     "particao_dirichlet", "ref_centro", "reaprende", "reaprende_nova",   # rodada 2, acrescentados no fim
     "redo_reinicio",   # rodada 4: sorteio dos pesos de entrada dos neurônios reinicializados (ReDo)
+    "sp_rodada",       # rodada 4: ruído do shrink-and-perturb por rodada (não reusa o "sp_ruido" por tarefa)
 )
 
 

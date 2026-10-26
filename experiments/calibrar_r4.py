@@ -15,6 +15,7 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.condicoes import Condicao, _sp, aux_gerador, avaliar_cond, pasta_calib, treinar_na_tarefa
@@ -61,12 +62,12 @@ def calibrar_R(cond: Condicao, tarefa: str, dir_r4: Path, saida: Path, *, grade:
 
         treinar_na_tarefa(cond_max, nova, X, y, particoes, gerador(SEMENTE_CALIB, "calib_embaralha", i), extra,
                           aux_gerador(cond, SEMENTE_CALIB, i, 1), registrar)
-    medias = {r: sum(v) / len(v) for r, v in sorted(por_r.items())}
+    medias = {r: (sum(v) / len(v) if all(np.isfinite(v)) else float("inf")) for r, v in sorted(por_r.items())}   # perda NaN/inf nunca vence
     melhor = min(medias, key=lambda r: (abs(medias[r] / alvo - 1), r))
     erro = medias[melhor] / alvo - 1
     res = {"condicao": cond.nome, "tarefa": tarefa, "alvo_loss_nova": alvo, "rodadas": melhor, "loss": medias[melhor],
            "erro_rel": erro, "ok": abs(erro) <= TOLERANCIA_R4, "tolerancia": TOLERANCIA_R4, "grade": [min(grade), r_max],
-           "alvo_fora_do_alcance": bool(alvo < min(medias.values()) or alvo > max(medias.values())),
+           "alvo_fora_do_alcance": bool(alvo < min(medias.values()) or alvo > max(v for v in medias.values() if np.isfinite(v))),
            "versao_dados": VERSAO_DADOS, "alvo_csv": str(alvo_csv),
            "alvo_sha256": hashlib.sha256(Path(alvo_csv).read_bytes()).hexdigest(), "tentativas": medias}
     Path(saida).parent.mkdir(parents=True, exist_ok=True)

@@ -223,7 +223,7 @@ def aux_gerador(cond: Condicao, sem: int, t: int, quem: int) -> dict | None:
     """Geradores próprios do ReDo e do SP por rodada (rodada 4); só a família `fedx` os usa."""
     if cond.familia != "fedx":
         return None
-    return {"redo": gerador(sem, "redo_reinicio", t, quem), "sp": gerador(sem, "sp_ruido", t, quem)}
+    return {"redo": gerador(sem, "redo_reinicio", t, quem), "sp": gerador(sem, "sp_rodada", t, quem)}
 
 
 def _sp(cond: Condicao, modelo, sem: int, t: int, quem: int) -> None:
@@ -314,11 +314,13 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
             linha["encolhimento"] = float(pd.Series([m["enc"] for m in mets]).mean())
             linha["acc_modelo_medio"] = acuracia(continua, X, y) if tec["tipo"] == "gossip" else float("nan")
             linha["consenso"] = consenso(extra) if tec["tipo"] == "gossip" else float("nan")
+            linha["redo_servidor"], linha["redo_cliente"] = extra["redo_n"]["servidor"], extra["redo_n"]["cliente"]
             rodadas += [{"tarefa": t, "rodada": r, "cos": m["cos"], "enc": m["enc"]} for r, m in enumerate(mets)]
         else:
             rodadas += [{"tarefa": t, "rodada": r, "cos": c} for r, c in enumerate(cos)]
         # rede nova de referência: mesmo protocolo, semente própria
         nova_acc, nova_loss = float("nan"), float("nan")
+        nova_redo = (float("nan"), float("nan"))
         nova_diag = (vazio("nova_ini_") | vazio("nova_fim_")) if diagnosticos else {}
         if t in com_nova:
             nova = criar_mlp(semente(sem, "init_nova", t))
@@ -332,12 +334,16 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
             treinar_na_tarefa(cond, nova, X, y, particoes, gerador(sem, "embaralha_nova", t), extra_nova,
                               aux_gerador(cond, sem, t, 1))
             nova_acc, nova_loss = avaliar_cond(cond, nova, extra_nova, X, y)
+            if cond.familia == "fedx":
+                nova_redo = (extra_nova["redo_n"]["servidor"], extra_nova["redo_n"]["cliente"])
             if diagnosticos:                    # rede nova, fim
                 d, _ = medir(nova, X, y, sem, t, 1, 1, "nova_fim_", v_nova, completo)
                 nova_diag.update(d)
         linha.update(nova_diag)
         linha["acc_nova"] = nova_acc
         linha["loss_nova"] = nova_loss
+        if cond.familia == "fedx":
+            linha["nova_redo_servidor"], linha["nova_redo_cliente"] = nova_redo
         linha["gap"] = linha["acc_cont"] - nova_acc      # sempre pareado: mesma tarefa
         sonda = {"sonda_perda_copia": float("nan"), "sonda_perda_nova": float("nan"),
                  "sonda_razao": float("nan")}

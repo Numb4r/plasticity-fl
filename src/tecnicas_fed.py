@@ -2,7 +2,8 @@
 
 Todas rodam sobre os mesmos clientes do `fedavg_iid` (10 clientes com 100 pontos, 15 passos locais, batch 20,
 Adam recriado a cada rodada) e mudam UMA coisa:
-  fedavg    FedAvg puro (aceita os remédios de 4b: L2, L2Init, ReDo local/federado, shrink-and-perturb por rodada)
+  fedavg    FedAvg puro (aceita os remédios de 4b: L2, L2Init, ReDo local/federado, shrink-and-perturb por rodada;
+            L2Init soma lam*(theta - theta0) ao gradiente, metade da convenção 2*lam de Kumar et al.)
   fedprox   termo proximal (mu/2)||w - w_global||^2 na perda local
   scaffold  variáveis de controle (opção I: c_k = gradiente cheio do cliente no modelo recebido)
   fedrep    corpo (l1, l2) na média, cabeça (l3) local de cada cliente; 5 passos na cabeça, depois 10 no corpo
@@ -98,6 +99,8 @@ def _metricas(estados: list[dict], vetor_ref: torch.Tensor | list, corpo: bool =
 
 def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, est) -> dict:
     tipo = tec["tipo"]
+    if tec.get("sp_rodada") and r >= 1:                  # SP do servidor ANTES de difundir (rodadas 1, 2, ...), nunca depois da
+        shrink_and_perturb(modelo, tec["sp_rodada"], SP_RUIDO, aux["sp"])   # última: o modelo medido não acaba de ser perturbado
     antes = clonar_estado(modelo)
     rf = tec.get("redo_fed")
     if rf and r % rf["cada"] == 0:                       # ReDo federado: o servidor decide e reinicia no global
@@ -107,7 +110,7 @@ def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, 
             scores.append(scores_neuronios(local, X[p]))
         masc = (mascara_voto(scores, pesos, rf["tau"], rf["q"]) if rf.get("modo") == "voto"
                 else mascara_media(scores, pesos, rf["tau"]))
-        redo_reiniciar(modelo, masc, aux["redo"])
+        extra["redo_n"]["servidor"] += redo_reiniciar(modelo, masc, aux["redo"])
         antes = clonar_estado(modelo)
     vetor_global = _vetor_estado(antes)
     H = tec["H"] if tipo == "diloco" else S_LOCAL
@@ -120,10 +123,10 @@ def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, 
             ck_novos.append(_grad_cheio(local, X, y, p))
         if rl and r % rl["cada"] == 0:                   # ReDo local: cada cliente reinicia o PRÓPRIO modelo
             s = scores_neuronios(local, X[p])
-            redo_reiniciar(local, [s[0] <= rl["tau"], s[1] <= rl["tau"]], aux["redo"])
+            extra["redo_n"]["cliente"] += redo_reiniciar(local, [s[0] <= rl["tau"], s[1] <= rl["tau"]], aux["redo"])
         prox = (tec["mu"], {n: antes[n] for n, _ in local.named_parameters()}) if tipo == "fedprox" else None
         corr = {n: est["c"][n] - est["ck"][k][n] for n, _ in local.named_parameters()} if tipo == "scaffold" else None
-        l2 = (tec["l2init"], extra["theta0"]) if tec.get("l2init") else None
+        l2 = (tec["l2init"], extra["theta0"]) if tec.get("l2init") is not None else None   # lam = 0 passa pelo ajuste (sanidade)
         ajuste = montar_ajuste(local, prox=prox, corr=corr, l2init=l2) if (prox or corr or l2) else None
         treinar_passos_ext(local, X, y, p, H, BATCH, reset, g, wd=tec.get("wd", 0.0), ajuste=ajuste)
         estados.append(_clonar(local))
@@ -134,8 +137,6 @@ def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, 
     else:
         nova = agg
     modelo.load_state_dict(nova)
-    if tec.get("sp_rodada"):                             # shrink-and-perturb do servidor, a cada rodada (exploratório)
-        shrink_and_perturb(modelo, tec["sp_rodada"], SP_RUIDO, aux["sp"])
     if tipo == "scaffold":                               # atualiza c_k e c (participação plena)
         est["ck"] = ck_novos
         est["c"] = {n: sum(c[n] for c in ck_novos) / len(ck_novos) for n in ck_novos[0]}
@@ -203,6 +204,7 @@ def treinar_fedx(modelo: MLP, extra: dict, X, y, particoes: list[torch.Tensor], 
         est = {"c": zero, "ck": [zero] * len(particoes)}
     rodada = {"fedrep": _rodada_fedrep, "gossip": _rodada_gossip}.get(tipo, _rodada_media)
     extra["metricas_rodada"] = []
+    extra["redo_n"] = {"servidor": 0, "cliente": 0}      # neurônios reiniciados nesta tarefa (0 = remédio não acionado)
     extra["estado_tecnica"] = est                        # só leitura (testes): c e c_k do SCAFFOLD, momento do DiLoCo
     for r in range(rodadas):
         extra["metricas_rodada"].append(rodada(modelo, extra, X, y, particoes, pesos, local, gerador, tec, aux, r, est))

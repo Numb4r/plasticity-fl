@@ -1,5 +1,5 @@
 #!/bin/bash
-# Uso interno (chamado por slurm/rodada2.sh e slurm/rodada2b.sh): submete UM job com nome, tempo e processos
+# Uso interno (chamado por slurm/rodada2.sh, rodada2b.sh, rodada4a.sh e rodada4b.sh): submete UM job com nome, tempo e processos
 # corretos para a rodada e a fase pedidas. Rode no headnode, de qualquer pasta.
 #   _submeter.sh <rodada: 2|2b|4a|4b> <fase: curto|longo> [--dry-run] [--forcar]
 set -uo pipefail

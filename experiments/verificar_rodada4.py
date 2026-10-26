@@ -18,7 +18,7 @@ from experiments.pipeline_r4 import DIRS, nome_csv, plano_confirmatorio
 from src.condicoes_r4 import CATALOGO, arq_selecao
 from src.config import RESET_CENTRAL, tarefas_com_nova
 
-MARCA_LOG = "calibração "          # linhas 'calibração <cond> <tarefa> ...' escritas pela fase de seleção
+MARCA_LOG = "RODADA4 parte={parte} fase=completo"   # linha escrita pelo pipeline ao começar o completo da parte
 
 
 def verificar(dir_r4: Path, parte: str, log: Path | None) -> tuple[list[str], int]:
@@ -32,8 +32,8 @@ def verificar(dir_r4: Path, parte: str, log: Path | None) -> tuple[list[str], in
                 erros.append("o log tem Traceback ou ERROR")
             if re.search(r"\bPARE\b", txt):
                 erros.append("o log tem aviso PARE")
-            if MARCA_LOG not in txt:
-                erros.append("o log não é do completo da rodada 4 (faltam as linhas de calibração); passe o log certo")
+            if MARCA_LOG.format(parte=parte) not in txt:
+                erros.append(f"o log não é do completo da rodada 4, parte {parte} (falta a linha '{MARCA_LOG.format(parte=parte)}'); passe o log certo")
             if "tempos:" not in txt:
                 erros.append("o log não chegou à linha final 'tempos:' (o completo não terminou)")
     res = dir_r4 / "calibracao" / "teste_curto" / "RESULTADO.txt"
@@ -91,6 +91,22 @@ def resumo_selecoes(dir_r4: Path, parte: str) -> list[str]:
                 aviso = "" if s["ok"] else "  <-- FORA DA TOLERÂNCIA (não avaliável)"
                 borda = "  [BORDA]" if s.get("borda") else ""
                 linhas.append(f"{nome} {tarefa}: R={s['rodadas']} erro_rel={s['erro_rel']:+.3f} hp={s['hp']}{borda}{aviso}")
+    return linhas + resumo_redo(dir_r4, parte)
+
+
+def resumo_redo(dir_r4: Path, parte: str) -> list[str]:
+    """Quantos neurônios os ReDo reiniciaram (soma sobre tarefas, sementes e as duas tarefas). Zero = não acionado."""
+    linhas = []
+    for nome in CATALOGO[parte]:
+        if "redo" not in nome:
+            continue
+        tot = {"redo_servidor": 0.0, "redo_cliente": 0.0}
+        for f in dir_r4.glob(f"{nome}_m3_[AB]_*.csv"):
+            d = pd.read_csv(f)
+            for c in tot:
+                tot[c] += float(d[c].sum()) if c in d else 0.0
+        aviso = "  <-- REMÉDIO NÃO ACIONADO (0 reinícios)" if sum(tot.values()) == 0 else ""
+        linhas.append(f"{nome}: neurônios reiniciados no total: servidor={tot['redo_servidor']:.0f} cliente={tot['redo_cliente']:.0f}{aviso}")
     return linhas
 
 

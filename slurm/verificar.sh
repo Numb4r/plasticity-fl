@@ -23,8 +23,8 @@ done
 case "$RODADA" in
     2)  MARCA="calibração B_fixa"; PASTA="results_rodada2";  MODULO="experiments.verificar_rodada2";  PADRAO="slurm-r2_longo-*.out slurm-r2_completo-*.out" ;;
     2b) MARCA="calibração central_HT_cal2"; PASTA="results_rodada2b"; MODULO="experiments.verificar_rodada2b"; PADRAO="slurm-r2b_longo-*.out slurm-r2b_completo-*.out" ;;
-    4a) MARCA="calibração "; PASTA="results_rodada4a"; MODULO="experiments.verificar_rodada4 --parte 4a"; PADRAO="slurm-r4a_longo-*.out" ;;
-    4b) MARCA="calibração "; PASTA="results_rodada4b"; MODULO="experiments.verificar_rodada4 --parte 4b"; PADRAO="slurm-r4b_longo-*.out" ;;
+    4a) MARCA="RODADA4 parte=4a fase=completo"; PASTA="results_rodada4a"; MODULO="experiments.verificar_rodada4 --parte 4a"; PADRAO="slurm-r4a_longo-*.out" ;;
+    4b) MARCA="RODADA4 parte=4b fase=completo"; PASTA="results_rodada4b"; MODULO="experiments.verificar_rodada4 --parte 4b"; PADRAO="slurm-r4b_longo-*.out" ;;
     *)  echo "rodada inválida: $RODADA" >&2; exit 2 ;;
 esac
 
