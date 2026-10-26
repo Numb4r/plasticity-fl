@@ -17,6 +17,7 @@ Plasticidade aqui é a capacidade da rede de continuar aprendendo, medida contra
 - Não simplificar nem remover controles, sementes, sondas ou testes para encurtar o código.
 - Não ajustar código depois de ver um resultado para "consertar" o resultado. Toda mudança vai para "Desvios" em `PREREGISTRO.md`, com data e motivo.
 - Pedir revisão ao `auditor-metricas` antes de interpretar qualquer resultado.
+- **Diário:** `DIARIO.md` (raiz) é o diário de bordo em texto corrido. Acrescentar uma entrada a cada etapa (implementação, auditoria, execução, resultado, análise, decisão do autor), com a data em que foi escrita, o que foi feito, o que mudou e por quê, os resultados e os insights. Ao falar de código, descrever em palavras quais funções foram afetadas. Não substitui o `PREREGISTRO.md`.
 
 ## Agentes
 Definidos em `.claude/agents/`.
