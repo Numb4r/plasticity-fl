@@ -12,7 +12,7 @@ import torch
 import experiments.pipeline_r4 as p
 from experiments.calibrar_r4 import calibrar_R
 from src import config
-from src.condicoes import aux_gerador, avaliar_cond, executar, pasta_calib, treinar_na_tarefa
+from src.condicoes import aux_gerador, avaliar_cond, executar, particoes_da_condicao, pasta_calib, treinar_na_tarefa
 from src.condicoes_r4 import CATALOGO_4A, CATALOGO_4B, COMBINACOES, arq_selecao, condicao_r4, tem_hp
 from src.dados import Sequencia, particionar
 from src.modelo import criar_mlp
@@ -40,7 +40,7 @@ def _treino_direto(cond, tarefa, R):
     from src.config import RESET_CENTRAL, SEMENTE_CALIB
     from src.condicoes import _sp
     seq, tec = Sequencia(tarefa, SEMENTE_CALIB, 3), (json.loads(cond.tec) if cond.tec else None)
-    part = particionar(cond.particao, SEMENTE_CALIB) if cond.particao else None
+    part = particoes_da_condicao(cond, SEMENTE_CALIB)
     perdas = []
     for i, t in enumerate(config.tarefas_com_nova(3)):
         X, y = seq.dados(t)
@@ -54,7 +54,8 @@ def _treino_direto(cond, tarefa, R):
 
 
 @pytest.mark.parametrize("nome,hp", [("fedprox", 0.1), ("sem_media_k1", None), ("central_aprendizado", None),
-                                     ("gossip_anel", None), ("fedrep", None), ("fed_sp", 0.8), ("fed_redo_fed", 0.5)])
+                                     ("gossip_anel", None), ("fedrep", None), ("fed_sp", 0.8), ("fed_redo_fed", 0.5),
+                                     ("particao_iid_k20", None), ("copias_k5", None), ("particao_epocas_k5", None)])
 def test_calibrar_R_e_exata_e_escolhe_o_menor_erro(nome, hp, tmp_path):
     cond = condicao_r4(nome, "A", tmp_path, hp=hp, rodadas=3, T=3)
     cal = calibrar_R(cond, "A", tmp_path, tmp_path / "c.json", grade=(2, 3, 4), T=3, alvo_csv=_alvo(tmp_path))

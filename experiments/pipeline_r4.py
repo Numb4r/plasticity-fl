@@ -1,9 +1,9 @@
-"""Pipeline da rodada 4, partes 4a (técnicas distribuídas) e 4b (remédios de plasticidade no FedAvg).
+"""Pipeline das rodadas 3 (parte "3": fatorial K x origem dos dados) e 4 (partes 4a, técnicas distribuídas, e 4b, remédios de plasticidade no FedAvg).
 
 Implementado ANTES do pré-registro, por decisão do autor (2026-10-26); o pré-registro vem depois dos resultados
 da rodada 3 e antes de qualquer execução desta rodada. Nada aqui foi rodado em dados reais.
 
-  --parte 4a|4b  --fase plano         plano e estimativa de custo (não roda nada)
+  --parte 3|4a|4b  --fase plano         plano e estimativa de custo (não roda nada)
                  --fase teste_curto   semente 1000, T=12, R pequeno: cobre cada técnica/remédio e aplica os PAREs
                  --fase completo      calibração de R e escolha de hiperparâmetros (semente 1000) -> sementes 24 a 31
 Resultados em results_rodada4a/ e results_rodada4b/ (a semente 1000 em .../calibracao/). 1 thread por processo.
@@ -41,8 +41,8 @@ CUSTO_S = {"fedavg_iid": 400, "fedprox": 440, "scaffold": 540, "fedrep": 400, "g
            "fed_l2": 410, "fed_l2init": 430, "fed_redo_local": 470, "fed_sp": 400, "fed_redo_fed": 450, "fed_l2_sp": 420,
            "fed_l2init_sp": 440, "fed_redo_ambos": 520, "fed_sp_rodada": 400, "fed_redo_fed_voto": 450, "central_l2": 90,
            # rodada 3: o custo vai com K x S (K = 10, S = 15 custa 400 s); suposições por analogia
-           "particao_iid_k2": 80, "particao_iid_k5": 200, "particao_iid_k20": 800, "copias_k2": 80, "copias_k5": 200,
-           "copias_k10": 400, "copias_k20": 800, "particao_epocas_k2": 400, "particao_epocas_k5": 400, "particao_epocas_k20": 430}
+           "particao_iid_k2": 160, "particao_iid_k5": 250, "particao_iid_k20": 700, "copias_k2": 160, "copias_k5": 250,
+           "copias_k10": 400, "copias_k20": 700, "particao_epocas_k2": 400, "particao_epocas_k5": 400, "particao_epocas_k20": 430}
 R_ESTIMADO = (60, 110)      # R calibrado suposto (a grade é 50 a 200)
 
 
@@ -163,7 +163,7 @@ def estimar(parte: str) -> dict:
     grade = {n: CATALOGO[parte][n][0] for n in conds}
 
     def total(R: int) -> dict:
-        conf = sum(_custo_exec(n, R) if n != "fedavg_iid" else CUSTO_S[n] for n in conds) * 2 * len(SEMENTES_R4)
+        conf = sum(_custo_exec(n, R) if n != "fedavg_iid" else CUSTO_S[n] for n in conds) * 2 * len(SEMENTES_PARTE[parte])
         cal = sel = 0.0
         for n in conds:
             if n == "fedavg_iid":
@@ -417,7 +417,8 @@ def main() -> None:
         else:
             tempos = fase_completo(ex, dir_r4, a.parte, a.sem_teste_curto)
     tempos["total_s"] = time.time() - t0
-    (dir_r4 / f"tempo_{a.fase}.json").write_text(json.dumps(tempos, indent=1))
+    # com jobs falhos o arquivo de tempo leva outro nome: a trava do `longo` (tempo_completo.json existe) não bloqueia a retomada
+    (dir_r4 / (f"tempo_{a.fase}_com_falhas.json" if FALHAS else f"tempo_{a.fase}.json")).write_text(json.dumps(tempos, indent=1))
     logger.info("tempos: %s", tempos)
     if FALHAS:
         logger.error("%d JOB(S) FALHARAM: %s (rode a mesma fase de novo para retomar)", len(FALHAS), FALHAS)

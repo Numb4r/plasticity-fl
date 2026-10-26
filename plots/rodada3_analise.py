@@ -220,16 +220,24 @@ def elegibilidade(df, calib, cond, tipo):
 
 # ---------------------------------------------------------------- hipóteses
 
-def p_rep(df):
-    """P_rep: inf do IC de gap(fedavg_iid) − gap(sem_media_k1) > +δ em A e em B. 'ok' é True/False/None (falta)."""
+def p_rep(df, calib=None):
+    """P_rep: inf do IC de gap(fedavg_iid) − gap(sem_media_k1) > +δ em A e em B. 'ok' é True/False/None (falta).
+    Com `calib`, a comparação também passa pela elegibilidade (calibração do sem_media_k1 ok e perda a até 10%):
+    se não passa, P_rep é 'não avaliável' (leitura registrada em 2026-10-26, auditoria da rodada 3)."""
     por, faltou = {}, []
     for t in TIPOS:
+        m = comparavel(df, calib, ("fedavg_iid", "sem_media_k1"), t) if calib is not None else None
+        if m:
+            por[t] = dict(c=None, ok=None)
+            faltou.append(m.replace("não avaliável (", "").rstrip(")") + f" em {t}")
+            continue
         c = contraste(df, "fedavg_iid", "sem_media_k1", t)
         por[t] = dict(c=c, ok=None if c["falta"] else bool(c["inf"] > DELTA))
         if c["falta"]:
             faltou.append(c["falta"])
     if faltou:
-        return dict(por=por, ok=None, msg=f"não avaliável (falta {'; '.join(faltou)})")
+        return dict(por=por, ok=None, msg=f"não avaliável ({'; '.join(faltou)})" if calib is not None and any(
+            ("calibração" in x or "nível" in x) for x in faltou) else f"não avaliável (falta {'; '.join(faltou)})")
     ok = all(por[t]["ok"] for t in TIPOS)
     return dict(por=por, ok=ok, msg="" if ok else MSG_PREP)
 
@@ -312,7 +320,7 @@ def geral(vers):
 
 def decidir(df, calib):
     """Tudo: P_rep, hipóteses por tarefa e veredito geral (P_rep falho/ausente derruba todas)."""
-    pr = p_rep(df)
+    pr = p_rep(df, calib)
     hip = {"H_dados": {t: h_dados(df, calib, t) for t in TIPOS},
            "H_cópias": {t: h_copias(df, calib, t) for t in TIPOS},
            "H_K": {t: h_k(df, calib, t) for t in TIPOS}}

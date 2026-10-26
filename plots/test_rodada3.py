@@ -239,6 +239,14 @@ def test_falta_semente_do_fedavg_derruba_p_rep(tmp_path):
     assert dec["hip"]["H_K"]["geral"].startswith("não avaliável")
 
 
+def test_p_rep_tambem_passa_pela_elegibilidade_do_sem_media_k1(tmp_path):
+    _, _, dec = rodar(tmp_path, calib_ruim=(("sem_media_k1", "B"),))
+    assert dec["p_rep"]["ok"] is None and "calibração" in dec["p_rep"]["msg"]
+    assert dec["hip"]["H_dados"]["geral"].startswith("não avaliável") and dec["hip"]["H_K"]["geral"].startswith("não avaliável")
+    _, _, dec = rodar(tmp_path / "ok")
+    assert dec["p_rep"]["ok"] is True
+
+
 def test_falta_tarefa_da_janela(tmp_path):
     _, _, dec = rodar(tmp_path, sem_tarefa={("particao_iid_k5", 20, 27)})
     assert dec["hip"]["H_K"]["vers"]["A"].startswith("não avaliável")
