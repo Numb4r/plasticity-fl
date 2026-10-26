@@ -474,3 +474,7 @@ Previsão do autor (rodada 3), escrita em 2026-10-26, antes de qualquer implemen
 - H_dados: não. Prevejo que, para K em {5, 10, 20}, dados diferentes não protegem mais que cópias dos mesmos dados acima da margem δ = 0,05.
 - H_cópias: não. Prevejo que tirar a média de cópias dos mesmos dados muda o gap em relação ao sem_media_k1, além da margem δ = 0,05, sem prever a direção.
 - H_K: sim. Prevejo que, com dados particionados, o gap com K=20 é melhor que com K=5.
+
+### 2026-10-26 · Rodada 3: hash da previsão e leituras a confirmar (antes de qualquer código)
+A previsão do autor foi commitada sozinha em `070b541` (um único arquivo, só o texto do autor). A implementação só começou depois deste registro.
+Leituras do registrador, a confirmar pelo autor antes de qualquer dado: (1) "H_K: sim" lê-se como a hipótese H_K **como registrada** (ordem gap(20) > gap(10) > gap(5) e IC de gap(20) − gap(5) acima de 0); a previsão do autor só diz que K = 20 é melhor que K = 5, então, além do veredito de H_K, reporta-se à parte se gap(20) − gap(5) tem IC acima de 0; (2) "H_cópias: não" lê-se como "não atendida" (as cópias se afastam do `sem_media_k1` por mais que δ nalgum K de {5, 10, 20}, em qualquer direção), e "parcial" conta como acerto parcial; (3) a regra de julgamento da previsão é a escrita acima ("não avaliável" não conta).
