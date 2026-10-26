@@ -4,7 +4,7 @@
 #   logs/             (saída dos jobs do Slurm, slurm-*.out)                          -> ./logs/cluster/
 # Nunca apaga nada local (sem --delete) e só substitui um arquivo local se o remoto for mais novo (--update).
 # Pode ser repetido durante a execução para trazer resultados parciais. Os originais ficam no cluster.
-# Uso: slurm/buscar.sh [--rodada 2|2b] [--dry-run]     (padrão: 2; a 2b traz results_rodada2b/)
+# Uso: slurm/buscar.sh [--rodada 2|2b|4a|4b] [--dry-run]     (padrão: 2; a 2b traz results_rodada2b/)
 set -euo pipefail
 REMOTE_USER="yuri.faria"
 REMOTE_HOST="ssh.recod.ic.unicamp.br"
@@ -16,12 +16,12 @@ RODADA="2"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) OPTS+=(--dry-run); echo "[dry-run] nada será transferido." ;;
-        --rodada) RODADA="${2:?--rodada 2|2b}"; shift ;;
+        --rodada) RODADA="${2:?--rodada 2|2b|4a|4b}"; shift ;;
         *) echo "argumento desconhecido: $1" >&2; exit 2 ;;
     esac
     shift
 done
-case "$RODADA" in 2) PASTA="results_rodada2" ;; 2b) PASTA="results_rodada2b" ;; *) echo "rodada inválida: $RODADA" >&2; exit 2 ;; esac
+case "$RODADA" in 2) PASTA="results_rodada2" ;; 2b) PASTA="results_rodada2b" ;; 4a) PASTA="results_rodada4a" ;; 4b) PASTA="results_rodada4b" ;; *) echo "rodada inválida: $RODADA" >&2; exit 2 ;; esac
 
 mkdir -p "$LOCAL_DIR/$PASTA" "$LOCAL_DIR/logs/cluster"
 echo "Buscando $PASTA/ ..."

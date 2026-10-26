@@ -1,10 +1,10 @@
 #!/bin/bash
 # Uso interno (chamado por slurm/rodada2.sh e slurm/rodada2b.sh): submete UM job com nome, tempo e processos
 # corretos para a rodada e a fase pedidas. Rode no headnode, de qualquer pasta.
-#   _submeter.sh <rodada: 2|2b> <fase: curto|longo> [--dry-run] [--forcar]
+#   _submeter.sh <rodada: 2|2b|4a|4b> <fase: curto|longo> [--dry-run] [--forcar]
 set -uo pipefail
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
-RODADA="${1:?rodada 2|2b}"; FASE_ARG="${2:?fase curto|longo}"; shift 2
+RODADA="${1:?rodada 2|2b|4a|4b}"; FASE_ARG="${2:?fase curto|longo}"; shift 2
 DRY=0; FORCAR=0
 for a in "$@"; do
     case "$a" in
@@ -19,7 +19,11 @@ case "$RODADA" in
         T_CURTO="01:00:00"; T_LONGO="12:00:00" ;;
     2b) PREFIXO="r2b"; SBATCH="slurm/rodada2b.sbatch"; PASTA="results_rodada2b"
         T_CURTO="01:00:00"; T_LONGO="04:00:00" ;;
-    *)  echo "rodada inválida: $RODADA (use 2 ou 2b)" >&2; exit 2 ;;
+    4a) PREFIXO="r4a"; SBATCH="slurm/rodada4.sbatch"; PASTA="results_rodada4a"
+        T_CURTO="01:00:00"; T_LONGO="12:00:00" ;;
+    4b) PREFIXO="r4b"; SBATCH="slurm/rodada4.sbatch"; PASTA="results_rodada4b"
+        T_CURTO="01:00:00"; T_LONGO="10:00:00" ;;
+    *)  echo "rodada inválida: $RODADA (use 2, 2b, 4a ou 4b)" >&2; exit 2 ;;
 esac
 case "$FASE_ARG" in
     curto)             FASE="teste_curto"; NOME="${PREFIXO}_curto"; TEMPO="$T_CURTO"; PROC=8 ;;
@@ -42,7 +46,11 @@ if [[ "$FASE" == "completo" && $FORCAR -eq 0 ]] && ! head -1 "$PASTA/calibracao/
     exit 3
 fi
 
-CMD=(sbatch --job-name="$NOME" --time="$TEMPO" "$SBATCH" "$FASE" "$PROC")
+if [[ "$RODADA" == 4* ]]; then
+    CMD=(sbatch --job-name="$NOME" --time="$TEMPO" "$SBATCH" "$RODADA" "$FASE" "$PROC")     # o sbatch da rodada 4 recebe a parte
+else
+    CMD=(sbatch --job-name="$NOME" --time="$TEMPO" "$SBATCH" "$FASE" "$PROC")
+fi
 echo "Rodada $RODADA, fase $FASE -> job '$NOME', tempo $TEMPO, $PROC processos, script $SBATCH"
 if [[ $DRY -eq 1 ]]; then
     echo "[dry-run] ${CMD[*]}"

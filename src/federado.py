@@ -50,21 +50,23 @@ def treino_local(
 
 def treinar_fedavg(
     modelo_global: MLP, X, y, particoes: list[torch.Tensor], gerador: torch.Generator,
-    rodadas: int, geral: bool = False,
+    rodadas: int, geral: bool = False, ao_fim_de_rodada=None,
 ) -> list[float]:
     """`rodadas` rodadas de FedAvg (25·m) sobre o modelo global (in-place).
 
     Devolve o cosseno médio entre as atualizações dos clientes em cada rodada
-    (NaN com 1 cliente).
+    (NaN com 1 cliente). `ao_fim_de_rodada(modelo_global, r)`, se dado, só lê (calibração de R, rodada 4).
     """
     cosenos = []
     local = MLP().to(X.device)
     particoes = [p for p in particoes if len(p) > 0]       # cliente vazio fica fora da rodada e do peso
     pesos = [len(p) for p in particoes]
-    for _ in range(rodadas):
+    for r in range(rodadas):
         global_antes = {k: v.detach().clone() for k, v in modelo_global.state_dict().items()}
         vetor_global = _vetor_estado(global_antes)
         estados = [treino_local(local, global_antes, X, y, p, gerador, geral) for p in particoes]
         cosenos.append(cosseno_medio([_vetor_estado(e) - vetor_global for e in estados]))
         modelo_global.load_state_dict(media_ponderada(estados, pesos))
+        if ao_fim_de_rodada is not None:
+            ao_fim_de_rodada(modelo_global, r + 1)
     return cosenos

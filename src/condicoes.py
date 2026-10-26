@@ -20,6 +20,7 @@ from src.dados import Sequencia, particionar, particionar_dirichlet
 from src.esquecimento import linha_da_matriz, metricas_esquecimento
 from src.federado import treinar_fedavg
 from src.media_tempo import clonar_estado, treinar_ht, treinar_lookahead
+from src.tecnicas_fed import avaliar_tecnica, consenso, iniciar_extra, treinar_fedx
 from src.metricas import acuracia, metricas_modelo, norma_parametros, perda_ce, vetor_parametros
 from src.modelo import MLP, criar_mlp
 from src.reaprendizado import reaprender
@@ -56,6 +57,17 @@ class Condicao:
     sonda_versao: int = 1         # 1 = sonda de 300 passos (rodada 1); 2 = 20 passos, perdas por alvo
     geral: bool = False           # amostragem local para clientes de qualquer tamanho (Dirichlet)
     rodada: int = 1
+    # --- rodada 4 ---
+    tec: str | None = None        # familia "fedx": técnica e remédios como JSON (ver src/tecnicas_fed.py)
+
+
+def params_cond(cond: Condicao) -> dict:
+    """Parâmetros gravados e conferidos ao retomar. Os campos acrescentados depois (rodada 4) só entram quando
+    são usados, para que os arquivos das rodadas anteriores continuem válidos."""
+    d = asdict(cond)
+    if d.get("tec") is None:
+        d.pop("tec", None)
+    return d
 
 
 def condicao_base(nome: str, nivel: int = 1) -> Condicao:
@@ -168,7 +180,7 @@ def csv_valido(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "
     csv, params = Path(f"{base}.csv"), Path(f"{base}.params.json")
     if not (csv.exists() and params.exists()):
         return False
-    if json.loads(params.read_text()) != json.loads(json.dumps(asdict(cond))):
+    if json.loads(params.read_text()) != json.loads(json.dumps(params_cond(cond))):
         return False
     colunas = pd.read_csv(csv, nrows=0).columns
     if sem != SEMENTE_CALIB and "fim_hess_max" not in colunas:    # CSV de antes do v3.1: refazer
@@ -178,19 +190,40 @@ def csv_valido(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "
     return len(pd.read_csv(csv)) == cond.T
 
 
-def treinar_na_tarefa(cond: Condicao, modelo, X, y, particoes, g, extra: dict | None = None) -> list[float]:
+def treinar_na_tarefa(cond: Condicao, modelo, X, y, particoes, g, extra: dict | None = None, aux: dict | None = None,
+                      ao_fim_de_rodada=None) -> list[float]:
     """Protocolo de treino de UMA tarefa (igual para a rede contínua e a nova).
 
-    `extra` guarda o estado que persiste entre tarefas fora do `modelo` (a tartaruga do central_HT)."""
+    `extra` guarda o estado que persiste entre tarefas fora do `modelo` (a tartaruga do central_HT, as cabeças do
+    FedRep, os clientes do gossip). `aux` traz os geradores de ReDo e SP (rodada 4). `ao_fim_de_rodada(modelo,
+    extra, r)` só lê: é a calibração de R (uma "rodada" central são 15 passos)."""
+    if cond.familia == "fedx":
+        return treinar_fedx(modelo, extra, X, y, particoes, g, cond.rodadas, json.loads(cond.tec), aux, ao_fim_de_rodada)
     if cond.familia == "fl":
-        return treinar_fedavg(modelo, X, y, particoes, g, cond.rodadas, geral=cond.geral)
+        cb = None if ao_fim_de_rodada is None else (lambda m, r: ao_fim_de_rodada(m, extra, r))
+        return treinar_fedavg(modelo, X, y, particoes, g, cond.rodadas, geral=cond.geral, ao_fim_de_rodada=cb)
     if cond.familia == "lookahead":
         return treinar_lookahead(modelo, X, y, particoes, g, cond.rodadas, cond.mu)
     if cond.familia == "ht":
         return treinar_ht(modelo, extra, X, y, particoes, g, cond.rodadas, cond.mu, passos=cond.s_local)
     todos = torch.arange(N, device=X.device)
-    treinar_passos(modelo, X, y, todos, cond.passos, BATCH, RESET_CENTRAL, g, wd=cond.wd)
+    cb = None if ao_fim_de_rodada is None else (lambda passos: ao_fim_de_rodada(modelo, extra, passos // RESET_CENTRAL))
+    treinar_passos(modelo, X, y, todos, cond.passos, BATCH, RESET_CENTRAL, g, wd=cond.wd, ao_fim_de_bloco=cb)
     return []
+
+
+def avaliar_cond(cond: Condicao, modelo, extra, X, y) -> tuple[float, float]:
+    """(acurácia, perda CE) da condição: o modelo, ou a média sobre os clientes (FedRep e gossip)."""
+    if cond.familia == "fedx":
+        return avaliar_tecnica(modelo, extra, json.loads(cond.tec), X, y)
+    return acuracia(modelo, X, y), perda_ce(modelo, X, y)
+
+
+def aux_gerador(cond: Condicao, sem: int, t: int, quem: int) -> dict | None:
+    """Geradores próprios do ReDo e do SP por rodada (rodada 4); só a família `fedx` os usa."""
+    if cond.familia != "fedx":
+        return None
+    return {"redo": gerador(sem, "redo_reinicio", t, quem), "sp": gerador(sem, "sp_ruido", t, quem)}
 
 
 def _sp(cond: Condicao, modelo, sem: int, t: int, quem: int) -> None:
@@ -225,9 +258,11 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
     matriz = np.full((cond.T, cond.T), np.nan)
     dirichlet = cond.particao == "dirichlet"
     particoes = (particionar(cond.particao, sem)
-                 if cond.familia in ("fl", "ht", "lookahead") and not dirichlet else None)
+                 if cond.familia in ("fl", "ht", "lookahead", "fedx") and not dirichlet else None)
     continua = criar_mlp(semente(sem, "init_continua"))
-    extra = {"tartaruga": clonar_estado(continua)} if cond.familia == "ht" else None
+    tec = json.loads(cond.tec) if cond.tec else None
+    extra = ({"tartaruga": clonar_estado(continua)} if cond.familia == "ht"
+             else iniciar_extra(tec, continua) if cond.familia == "fedx" else None)
     linhas, rodadas, reaprende = [], [], []
     v_cont = None                               # autovetor da Hessiana (só usado no corte (b))
     for t in range(cond.T):
@@ -244,11 +279,12 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
         if diagnosticos:                        # início da tarefa: depois do SP, antes do 1º passo
             d_ini, v_cont = medir(continua, X, y, sem, t, 0, 0, "ini_", v_cont, completo)
         cos = treinar_na_tarefa(cond, continua, X, y, particoes,
-                                gerador(sem, "embaralha_continua", t), extra)
+                                gerador(sem, "embaralha_continua", t), extra, aux_gerador(cond, sem, t, 0))
+        acc_c, loss_c = avaliar_cond(cond, continua, extra, X, y)
         linha = {"tarefa": t, "tipo": tipo, "cond": cond.nome, "nivel": cond.nivel, "semente": sem,
                  "maj_frac": seq.maj_frac(t),
-                 "acc_cont": acuracia(continua, X, y),
-                 "loss_cont": perda_ce(continua, X, y),
+                 "acc_cont": acc_c,
+                 "loss_cont": loss_c,
                  "norma": norma_parametros(continua),
                  "distancia": (vetor_parametros(continua) - theta0).norm().item()}
         linha.update(metricas_modelo(continua, X, TAUS))
@@ -273,20 +309,29 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
             linha["acc_tartaruga"] = acuracia(tart, X, y)
         else:
             linha["acc_tartaruga"] = float("nan")
-        rodadas += [{"tarefa": t, "rodada": r, "cos": c} for r, c in enumerate(cos)]
+        if cond.familia == "fedx":              # rodada 4: encolhimento da média e, no gossip, o modelo médio e o consenso
+            mets = extra["metricas_rodada"]
+            linha["encolhimento"] = float(pd.Series([m["enc"] for m in mets]).mean())
+            linha["acc_modelo_medio"] = acuracia(continua, X, y) if tec["tipo"] == "gossip" else float("nan")
+            linha["consenso"] = consenso(extra) if tec["tipo"] == "gossip" else float("nan")
+            rodadas += [{"tarefa": t, "rodada": r, "cos": m["cos"], "enc": m["enc"]} for r, m in enumerate(mets)]
+        else:
+            rodadas += [{"tarefa": t, "rodada": r, "cos": c} for r, c in enumerate(cos)]
         # rede nova de referência: mesmo protocolo, semente própria
         nova_acc, nova_loss = float("nan"), float("nan")
         nova_diag = (vazio("nova_ini_") | vazio("nova_fim_")) if diagnosticos else {}
         if t in com_nova:
             nova = criar_mlp(semente(sem, "init_nova", t))
-            extra_nova = {"tartaruga": clonar_estado(nova)} if cond.familia == "ht" else None
+            extra_nova = ({"tartaruga": clonar_estado(nova)} if cond.familia == "ht"
+                          else iniciar_extra(tec, nova) if cond.familia == "fedx" else None)
             _sp(cond, nova, sem, t, 1)
             v_nova = None
             if diagnosticos:                    # rede nova, início: depois do SP, antes do 1º passo
                 d, v_nova = medir(nova, X, y, sem, t, 0, 1, "nova_ini_", None, completo)
                 nova_diag.update(d)
-            treinar_na_tarefa(cond, nova, X, y, particoes, gerador(sem, "embaralha_nova", t), extra_nova)
-            nova_acc, nova_loss = acuracia(nova, X, y), perda_ce(nova, X, y)
+            treinar_na_tarefa(cond, nova, X, y, particoes, gerador(sem, "embaralha_nova", t), extra_nova,
+                              aux_gerador(cond, sem, t, 1))
+            nova_acc, nova_loss = avaliar_cond(cond, nova, extra_nova, X, y)
             if diagnosticos:                    # rede nova, fim
                 d, _ = medir(nova, X, y, sem, t, 1, 1, "nova_fim_", v_nova, completo)
                 nova_diag.update(d)
@@ -320,5 +365,5 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
     if particoes is not None and len(particoes) > 1 and rodadas and not dirichlet:
         pd.DataFrame(rodadas).to_csv(saida / f"{base}_rodadas.csv", index=False)
     # parâmetros usados (nível, rodadas, passos, L2, SP, versão dos dados): conferidos ao retomar
-    (saida / f"{base}.params.json").write_text(json.dumps(asdict(cond), sort_keys=True))
+    (saida / f"{base}.params.json").write_text(json.dumps(params_cond(cond), sort_keys=True))
     return df

@@ -95,3 +95,26 @@ REAPRENDE_PASSO = 15
 REAPRENDE_TETO = 1500
 REAPRENDE_EM = (9, 19, 29)            # ao fim destas tarefas...
 REAPRENDE_ANTIGAS = (0, 5)            # ...reaprende estas tarefas antigas
+
+
+# --- Rodada 4 (4a: técnicas distribuídas; 4b: remédios de plasticidade). Implementada ANTES do pré-registro
+# (decisão do autor, 2026-10-26): métodos genéricos, com testes, sem nenhum dado visto. Estes valores são
+# padrões do código, não critérios; o pré-registro da rodada 4 vem depois dos resultados da rodada 3. ---
+SEMENTES_R4 = (24, 25, 26, 27, 28, 29, 30, 31)
+R_GRADE_R4 = tuple(range(50, 201))            # grade de R (rodadas por tarefa) da calibração, passo 1
+TOLERANCIA_R4 = 0.10                          # perda CE da rede nova a até 10% (relativo) do alvo (fedavg_iid K=10)
+R_BASE_R4 = 75                                # R do fedavg_iid (o alvo da calibração)
+FEDREP_PASSOS_CABECA = 5                      # FedRep: 5 passos só na cabeça, depois 10 só no corpo (total 15)
+FEDREP_PASSOS_CORPO = 10
+DILOCO_LR_EXTERNA = 0.7                       # DiLoCo (Douillard et al., 2023): SGD externo com momento de Nesterov
+DILOCO_MOMENTO = 0.9
+DILOCO_HS = (15, 50, 150)
+REDO_CADA = 5                                 # ReDo (local e federado): a cada 5 rodadas, começando na rodada 0
+GRADE_FEDPROX_MU = (0.001, 0.01, 0.1, 1.0)
+GRADE_L2_FED = (1e-5, 1e-4, 1e-3)
+GRADE_L2INIT = (1e-4, 1e-3, 1e-2)
+GRADE_REDO_TAU = (0.025, 0.1)
+GRADE_SP_TAREFA = (0.6, 0.8, 0.9, 0.95)
+GRADE_SP_RODADA = (0.99, 0.995, 0.999)        # exploratório
+GRADE_REDO_VOTO_Q = (0.5, 0.8)                # exploratório
+GRADE_L2_CENTRAL = (1e-6, 1e-5, 1e-4, 1e-3)   # referência central_L2 (grade estendida pelo autor)
