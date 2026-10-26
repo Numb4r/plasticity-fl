@@ -54,6 +54,20 @@ def particionar(modo: str, sem: int) -> list[torch.Tensor]:
     return [p.to(dispositivo()) for p in partes]
 
 
+def particionar_k(modo: str, sem: int, K: int) -> list[torch.Tensor]:
+    """Rodada 3: K clientes. iid: partição aleatória de N em K pedaços iguais (K = 10 é igual a `particionar("iid")`);
+    copias: K cópias dos N pontos (só a ordem dos lotes difere). N tem de ser divisível por K."""
+    todos = torch.arange(N)
+    if modo == "iid":
+        assert N % K == 0, f"N={N} não é divisível por K={K}"
+        partes = list(torch.randperm(N, generator=gerador(sem, "particao")).chunk(K))
+    elif modo == "copias":
+        partes = [todos.clone() for _ in range(K)]
+    else:
+        raise ValueError(f"modo de partição desconhecido: {modo}")
+    return [p.to(dispositivo()) for p in partes]
+
+
 NORMA_MU = 3.0   # norma do deslocamento mu_t de cada tarefa em B_disjunta
 
 

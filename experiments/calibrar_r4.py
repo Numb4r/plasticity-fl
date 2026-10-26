@@ -18,9 +18,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.condicoes import Condicao, _sp, aux_gerador, avaliar_cond, pasta_calib, treinar_na_tarefa
+from src.condicoes import Condicao, _sp, aux_gerador, avaliar_cond, particoes_da_condicao, pasta_calib, treinar_na_tarefa
 from src.config import R_GRADE_R4, RESET_CENTRAL, SEMENTE_CALIB, T_PADRAO, TOLERANCIA_R4, VERSAO_DADOS, tarefas_com_nova
-from src.dados import Sequencia, particionar
+from src.dados import Sequencia
 from src.modelo import criar_mlp
 from src.sementes import gerador, semente
 from src.tecnicas_fed import iniciar_extra
@@ -48,7 +48,7 @@ def calibrar_R(cond: Condicao, tarefa: str, dir_r4: Path, saida: Path, *, grade:
     cond_max = replace(cond, passos=RESET_CENTRAL * r_max) if central else replace(cond, rodadas=r_max)
     tec = json.loads(cond.tec) if cond.tec else None
     seq = Sequencia(tarefa, SEMENTE_CALIB, T)
-    particoes = particionar(cond.particao, SEMENTE_CALIB) if cond.particao else None
+    particoes = particoes_da_condicao(cond, SEMENTE_CALIB)
     por_r: dict[int, list[float]] = {}
     for i, t in enumerate(tarefas):
         X, y = seq.dados(t)

@@ -16,7 +16,7 @@ from src.config import (
     RESET_CENTRAL, RODADAS_BASE, S_LOCAL, SEMENTE_CALIB, SONDA_CADA, SP_RUIDO, T_PADRAO,
     T_SEM_PARTICAO, TAUS, VERSAO_DADOS, tarefas_com_nova,
 )
-from src.dados import Sequencia, particionar, particionar_dirichlet
+from src.dados import Sequencia, particionar, particionar_dirichlet, particionar_k
 from src.esquecimento import linha_da_matriz, metricas_esquecimento
 from src.federado import treinar_fedavg
 from src.media_tempo import clonar_estado, treinar_ht, treinar_lookahead
@@ -219,6 +219,17 @@ def avaliar_cond(cond: Condicao, modelo, extra, X, y) -> tuple[float, float]:
     return acuracia(modelo, X, y), perda_ce(modelo, X, y)
 
 
+def particoes_da_condicao(cond: Condicao, sem: int, dirichlet: bool = False):
+    """Partição dos dados da condição (None nas centralizadas e no Dirichlet, refeito a cada tarefa). Na família
+    `fedx`, a rodada 3 escolhe K e a origem dos dados (`tec` com "K" e "modo"); sem isso valem os 10 clientes IID."""
+    if cond.familia not in ("fl", "ht", "lookahead", "fedx") or dirichlet:
+        return None
+    tec = json.loads(cond.tec) if cond.tec else None
+    if cond.familia == "fedx" and tec and "K" in tec:
+        return particionar_k(tec["modo"], sem, tec["K"])
+    return particionar(cond.particao, sem)
+
+
 def aux_gerador(cond: Condicao, sem: int, t: int, quem: int) -> dict | None:
     """Geradores próprios do ReDo e do SP por rodada (rodada 4); só a família `fedx` os usa."""
     if cond.familia != "fedx":
@@ -257,8 +268,7 @@ def executar(cond: Condicao, tipo: str, sem: int, saida: Path, sufixo: str = "",
     com_nova = set(tarefas_com_nova(cond.T, janela_hpart=cond.T <= T_PADRAO))   # T=100: sem a janela de H_part
     matriz = np.full((cond.T, cond.T), np.nan)
     dirichlet = cond.particao == "dirichlet"
-    particoes = (particionar(cond.particao, sem)
-                 if cond.familia in ("fl", "ht", "lookahead", "fedx") and not dirichlet else None)
+    particoes = particoes_da_condicao(cond, sem, dirichlet)
     continua = criar_mlp(semente(sem, "init_continua"))
     tec = json.loads(cond.tec) if cond.tec else None
     extra = ({"tartaruga": clonar_estado(continua)} if cond.familia == "ht"

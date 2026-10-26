@@ -176,14 +176,14 @@ def _miniatura(monkeypatch):
     return p
 
 
-@pytest.mark.parametrize("parte", ["4a", "4b"])
+@pytest.mark.parametrize("parte", ["3", "4a", "4b"])
 def test_teste_curto_em_miniatura_pare_e_ok_e_libera_o_completo(parte, tmp_path, monkeypatch):
     _miniatura(monkeypatch)
     monkeypatch.setattr(p, "LIMITE_APRENDE", 0.99)                         # com 2 rodadas o fedavg_iid não chega perto disso
     assert p.fase_teste_curto(_Serial(), tmp_path, parte) == 3
     res = (tmp_path / "calibracao" / "teste_curto" / "RESULTADO.txt").read_text()
     assert res.startswith("PARE") and "fedavg_iid (R pequeno) não aprende" in res
-    assert "sanidades (fedprox μ=0, gossip completo, DiLoCo lr=1 sem momento, FedAvg sem remédio) vs fedavg_iid: reproduzem" in res
+    assert "sanidades" in res and "vs fedavg_iid: reproduzem" in res
     assert "calibração em miniatura" in res
     with pytest.raises(SystemExit):
         p.fase_completo(None, tmp_path, parte)

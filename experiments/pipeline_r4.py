@@ -27,10 +27,11 @@ import torch
 from experiments.calibrar_r4 import arq_alvo, calibrar_R
 from src.condicoes import _base_arquivo, csv_valido, executar, pasta_calib
 from src.condicoes_r4 import CATALOGO, COMBINACOES, DEPENDE, arq_selecao, condicao_r4, tem_hp
-from src.config import NIVEL_R2, R_BASE_R4, SEMENTE_CALIB, SEMENTES_R4, T_PADRAO
+from src.config import NIVEL_R2, R_BASE_R4, SEMENTE_CALIB, SEMENTES_R3, SEMENTES_R4, T_PADRAO
 
 logger = logging.getLogger(__name__)
-DIRS = {"4a": "results_rodada4a", "4b": "results_rodada4b"}
+DIRS = {"3": "results_rodada3", "4a": "results_rodada4a", "4b": "results_rodada4b"}
+SEMENTES_PARTE = {"3": SEMENTES_R3, "4a": SEMENTES_R4, "4b": SEMENTES_R4}
 LIMITE_APRENDE = 0.2        # teste curto: PARE se o fedavg_iid (R pequeno) fica abaixo disto (o acaso é 0,1)
 FALHAS: list[str] = []
 # segundos de CPU de uma execução de T=30 com diagnósticos, R = 75. MEDIDOS só fedavg_iid, sem_media_k1 e
@@ -38,7 +39,10 @@ FALHAS: list[str] = []
 CUSTO_S = {"fedavg_iid": 400, "fedprox": 440, "scaffold": 540, "fedrep": 400, "gossip_anel": 410, "gossip_grau4": 410,
            "diloco_h15": 400, "diloco_h50": 1330, "diloco_h150": 4000, "sem_media_k1": 130, "central_aprendizado": 85,
            "fed_l2": 410, "fed_l2init": 430, "fed_redo_local": 470, "fed_sp": 400, "fed_redo_fed": 450, "fed_l2_sp": 420,
-           "fed_l2init_sp": 440, "fed_redo_ambos": 520, "fed_sp_rodada": 400, "fed_redo_fed_voto": 450, "central_l2": 90}
+           "fed_l2init_sp": 440, "fed_redo_ambos": 520, "fed_sp_rodada": 400, "fed_redo_fed_voto": 450, "central_l2": 90,
+           # rodada 3: o custo vai com K x S (K = 10, S = 15 custa 400 s); suposições por analogia
+           "particao_iid_k2": 80, "particao_iid_k5": 200, "particao_iid_k20": 800, "copias_k2": 80, "copias_k5": 200,
+           "copias_k10": 400, "copias_k20": 800, "particao_epocas_k2": 400, "particao_epocas_k5": 400, "particao_epocas_k20": 430}
 R_ESTIMADO = (60, 110)      # R calibrado suposto (a grade é 50 a 200)
 
 
@@ -47,8 +51,8 @@ def dir_de(parte: str) -> Path:
 
 
 def plano_confirmatorio(parte: str) -> list[tuple]:
-    """(condição, tarefa, semente) das sementes 24 a 31, tarefas A e B."""
-    return [(c, tipo, sem) for tipo in ("A", "B") for sem in SEMENTES_R4 for c in CATALOGO[parte]]
+    """(condição, tarefa, semente): sementes 16 a 23 na rodada 3 e 24 a 31 na rodada 4, tarefas A e B."""
+    return [(c, tipo, sem) for tipo in ("A", "B") for sem in SEMENTES_PARTE[parte] for c in CATALOGO[parte]]
 
 
 def nome_csv(job: tuple) -> str:
@@ -167,6 +171,9 @@ def estimar(parte: str) -> dict:
             ncand = len(grade[n]) if grade[n] else 1
             # calibração: 16 redes novas x 200 rodadas; 10 clientes x 15 passos (FL), H passos (DiLoCo), 15 passos (central)
             unidade = {"sem_media_k1": 0.0116, "central_aprendizado": 0.0077, "central_l2": 0.0077}.get(n, 0.116)
+            if "_k" in n and n.rsplit("_k", 1)[1].isdigit():              # rodada 3: custo por rodada ~ K x S
+                K = int(n.rsplit("_k", 1)[1])
+                unidade = 0.0116 * K * (-(-3 * (1000 // K) // 20) / 15 if "epocas" in n else 1.0)
             if n.startswith("diloco"):
                 unidade *= {"diloco_h15": 1, "diloco_h50": 50 / 15, "diloco_h150": 10}[n]
             cal += ncand * 2 * 16 * 200 * unidade
@@ -266,13 +273,22 @@ TC_SANIDADE = {"fedprox_mu0": {"tipo": "fedprox", "mu": 0.0}, "gossip_completo":
 
 def jobs_teste_curto(parte: str) -> list[dict]:
     J = lambda nome, T, R, suf, hp=None, tec=None: dict(nome=nome, tarefa="A", T=T, rodadas=R, sufixo=suf, hp=hp, tec=tec)
-    jobs = [J("fedavg_iid", 3, 3, "_san_base")] + [J("fedavg_iid", 3, 3, f"_san_{k}", tec=v) for k, v in TC_SANIDADE.items()]
+    jobs = [J("fedavg_iid", 3, 3, "_san_base")]
+    if parte != "3":
+        jobs += [J("fedavg_iid", 3, 3, f"_san_{k}", tec=v) for k, v in TC_SANIDADE.items()]
+    if parte == "3":                                       # sanidades próprias: K=10 explícito e copias_k10 = FedAvg com 'total'
+        jobs += [J("fedavg_iid", 3, 3, "_san_part_k10", tec={"tipo": "fedavg", "K": 10, "modo": "iid"}),
+                 dict(J("fedavg_iid", 3, 3, "_san_fl_total"), especial="fl_total"),
+                 J("fedavg_iid", 3, 3, "_san_copias_k10", tec={"tipo": "fedavg", "K": 10, "modo": "copias"})]
     for nome in CATALOGO[parte]:
         jobs.append(J(nome, 12, TC_R.get(nome, TC_R_PADRAO), "_tc", hp=TC_HP.get(nome)))
     return jobs
 
 
 def _cond_tc(j: dict, dir_r4: Path):
+    if j.get("especial") == "fl_total":                    # FedAvg da rodada 2 com os mesmos 1000 pontos em 10 clientes
+        from src.condicoes import condicao_base
+        return replace(condicao_base("media_sem_particao", NIVEL_R2), T=j["T"], rodadas=j["rodadas"], rodada=4, sonda_versao=2)
     cond = condicao_r4(j["nome"], j["tarefa"], dir_r4, hp=j["hp"], rodadas=j["rodadas"], T=j["T"])
     return replace(cond, tec=json.dumps(j["tec"], sort_keys=True)) if j["tec"] else cond
 
@@ -294,14 +310,22 @@ def avaliar_teste_curto(dir_r4: Path, parte: str) -> tuple[list[str], list[str]]
     # 1) equivalências exatas: o que deve reproduzir o fedavg_iid reproduz (as colunas de resultado, bit a bit)
     base = df[("fedavg_iid", "_san_base")]
     cols = ["acc_cont", "loss_cont", "norma", "rank_ef", "acc_nova", "loss_nova", "gap", "cos_medio", "encolhimento"]
-    for k in TC_SANIDADE:
+    sanidades = list(TC_SANIDADE) if parte != "3" else ["part_k10"]
+    for k in sanidades:
         d = df[("fedavg_iid", f"_san_{k}")]
         igual = np.allclose(base[cols].to_numpy(float), d[cols].to_numpy(float), rtol=0, atol=1e-6 if k == "diloco_lr1" else 0,
                             equal_nan=True)
         if not igual:
             pare.append(f"sanidade {k}: NÃO reproduz o fedavg_iid (colunas {cols})")
-    info.append("sanidades (fedprox μ=0, gossip completo, DiLoCo lr=1 sem momento, FedAvg sem remédio) vs fedavg_iid: "
-                + ("reproduzem" if not any(p.startswith("sanidade") for p in pare) else "FALHARAM"))
+    if parte == "3":                                       # copias_k10 (fedx) = FedAvg com a partição 'total' (fl), sem a coluna de encolhimento
+        d = df[("fedavg_iid", "_san_copias_k10")]
+        ref = df[("fedavg_iid", "_san_fl_total")]
+        cs = [c for c in cols if c != "encolhimento"]
+        if not np.allclose(ref[cs].to_numpy(float), d[cs].to_numpy(float), rtol=0, atol=0, equal_nan=True):
+            pare.append("sanidade copias_k10: NÃO reproduz o FedAvg com a partição 'total' (colunas %s)" % cs)
+    info.append("sanidades vs fedavg_iid: " + ("reproduzem" if not any(p.startswith("sanidade") for p in pare) else "FALHARAM")
+                + (" (rodada 3: K=10 explícito e copias_k10 = FedAvg 'total')" if parte == "3" else
+                   " (fedprox μ=0, gossip completo, DiLoCo lr=1 sem momento, FedAvg sem remédio)"))
     # 2) valores finitos e rede nova nas tarefas certas
     ref = set(tarefas_com_nova(12))
     for (nome, suf), d in df.items():
@@ -332,8 +356,8 @@ def avaliar_teste_curto(dir_r4: Path, parte: str) -> tuple[list[str], list[str]]
                 pare.append(f"{nome}: o ReDo não reiniciou nenhum neurônio (tau = 0,5): o remédio não é acionado")
     # 4) calibração em miniatura (uma condição com hiperparâmetro), com o alvo = o fedavg_iid T=12 deste teste
     alvo = pasta / f"{_base_arquivo(_cond_tc(next(j for j in jobs if j['nome'] == 'fedavg_iid' and j['sufixo'] == '_tc'), dir_r4), 'A', SEMENTE_CALIB, '_tc')}.csv"
-    nome_cal = "fedprox" if parte == "4a" else "fed_l2"
-    cond = condicao_r4(nome_cal, "A", dir_r4, hp=TC_HP[nome_cal], rodadas=3, T=12)
+    nome_cal = {"3": "particao_iid_k5", "4a": "fedprox", "4b": "fed_l2"}[parte]
+    cond = condicao_r4(nome_cal, "A", dir_r4, hp=TC_HP.get(nome_cal), rodadas=3, T=12)
     c = calibrar_R(cond, "A", dir_r4, pasta / "calibracao_R_tc.json", grade=(3, 4, 5), T=12, alvo_csv=alvo)
     if not (np.isfinite(c["erro_rel"]) and c["rodadas"] in (3, 4, 5) and len(c["tentativas"]) == 3):
         pare.append(f"calibração em miniatura malformada: {c['rodadas']=} {c['erro_rel']=}")
@@ -372,7 +396,7 @@ def _preparar_processo() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--parte", choices=["4a", "4b"], required=True)
+    ap.add_argument("--parte", choices=["3", "4a", "4b"], required=True)
     ap.add_argument("--fase", choices=["plano", "teste_curto", "completo"], required=True)
     ap.add_argument("--saida", default=None)
     ap.add_argument("--processos", type=int, default=3, help="cada processo usa ~0,3 GB")

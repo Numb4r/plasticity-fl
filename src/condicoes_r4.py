@@ -1,4 +1,6 @@
-"""Condições da rodada 4 (4a: técnicas distribuídas; 4b: remédios de plasticidade no FedAvg).
+"""Condições das rodadas 3 (fatorial K x origem dos dados) e 4 (4a: técnicas distribuídas; 4b: remédios no FedAvg).
+Rodada 3: `fedavg_iid` (= partição IID, K = 10, o alvo), `particao_iid_kK`, `copias_kK`, `sem_media_k1` e o braço de épocas
+locais fixas `particao_epocas_kK` (S = ceil(3 n / 20) passos por rodada; K = 10 seria igual a `fedavg_iid`, então não existe).
 
 Cada condição tem um hiperparâmetro opcional (escolhido na semente 1000) e um número de rodadas R (calibrado na
 semente 1000 para a perda da rede nova ficar a até 10% da do `fedavg_iid` K=10). Os dois vêm de
@@ -18,8 +20,10 @@ import json
 from pathlib import Path
 
 from src.condicoes import Condicao, pasta_calib
+import math
+
 from src.config import (
-    DILOCO_LR_EXTERNA, DILOCO_MOMENTO, GRADE_FEDPROX_MU, GRADE_L2_CENTRAL, GRADE_L2_FED, GRADE_L2INIT, GRADE_REDO_TAU,
+    DILOCO_LR_EXTERNA, DILOCO_MOMENTO, EPOCAS_LOCAIS_FIXAS, KS_R3, N, BATCH, GRADE_FEDPROX_MU, GRADE_L2_CENTRAL, GRADE_L2_FED, GRADE_L2INIT, GRADE_REDO_TAU,
     GRADE_REDO_VOTO_Q, GRADE_SP_RODADA, GRADE_SP_TAREFA, NIVEL_R2, R_BASE_R4, REDO_CADA, RESET_CENTRAL, S_LOCAL, T_PADRAO,
 )
 
@@ -44,7 +48,11 @@ CATALOGO_4B = {
 COMBINACOES = {"fed_l2_sp": ("fed_l2", "fed_sp"), "fed_l2init_sp": ("fed_l2init", "fed_sp"),
                "fed_redo_ambos": ("fed_redo_local", "fed_redo_fed")}
 DEPENDE = {"fed_redo_fed_voto": ("fed_redo_fed",)}      # lê o tau já escolhido do ReDo federado por média
-CATALOGO = {"4a": CATALOGO_4A, "4b": CATALOGO_4B}
+CATALOGO_3 = {"fedavg_iid": (None, False), "sem_media_k1": (None, False)}
+CATALOGO_3.update({f"particao_iid_k{K}": (None, False) for K in KS_R3 if K != 10})
+CATALOGO_3.update({f"copias_k{K}": (None, False) for K in KS_R3})
+CATALOGO_3.update({f"particao_epocas_k{K}": (None, True) for K in KS_R3 if K != 10})       # secundário, sem veredito
+CATALOGO = {"3": CATALOGO_3, "4a": CATALOGO_4A, "4b": CATALOGO_4B}
 
 
 def tem_hp(nome: str) -> bool:
@@ -77,6 +85,12 @@ def tec_de(nome: str, hp, dir_r4: Path | None = None, tarefa: str = "A") -> tupl
     """(tec, extras): `tec` vai em Condicao.tec (JSON); `extras` são campos próprios da Condicao (wd, sp_lambda)."""
     if nome == "fedavg_iid":
         return {"tipo": "fedavg"}, {}
+    if nome.startswith(("particao_iid_k", "copias_k", "particao_epocas_k")):        # rodada 3
+        K = int(nome.rsplit("_k", 1)[1])
+        tec = {"tipo": "fedavg", "K": K, "modo": "copias" if nome.startswith("copias") else "iid"}
+        if nome.startswith("particao_epocas"):
+            tec["S"] = math.ceil(EPOCAS_LOCAIS_FIXAS * (N // K) / BATCH)
+        return tec, {}
     if nome == "fedprox":
         return {"tipo": "fedprox", "mu": hp}, {}
     if nome in ("scaffold", "fedrep"):
@@ -130,5 +144,5 @@ def condicao_r4(nome: str, tarefa: str, dir_r4: Path, *, hp=None, rodadas: int |
         return Condicao(nome, "central", passos=RESET_CENTRAL * rodadas, wd=hp_de(nome, tarefa, dir_r4, hp), **comum)
     h = hp_de(nome, tarefa, dir_r4, hp) if tem_hp(nome) else None
     tec, extras = tec_de(nome, h, dir_r4, tarefa)
-    return Condicao(nome, "fedx", "iid", rodadas=rodadas, s_local=S_LOCAL, tec=json.dumps(tec, sort_keys=True),
-                    **extras, **comum)
+    return Condicao(nome, "fedx", tec.get("modo", "iid"), rodadas=rodadas, s_local=tec.get("S", S_LOCAL),
+                    tec=json.dumps(tec, sort_keys=True), **extras, **comum)

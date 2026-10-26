@@ -1,6 +1,6 @@
 # RASCUNHO · Rodada 5 · Benchmarks reais (depois das rodadas 3 e 4)
 
-**Status: ideia registrada em 2026-10-26. Nada implementado, nada pré-registrado, nenhum dado baixado.** Vem depois das rodadas 3 e 4; as hipóteses dependem do que elas disserem. Os números de custo são estimativas por contagem de operações, não medidas (incerteza de um fator 3 ou mais).
+**Status: ideia registrada em 2026-10-26; decisões do autor incorporadas no fim (2026-10-26). Nada implementado, nada pré-registrado, nenhum dado baixado.** Vem depois das rodadas 3 e 4; as hipóteses dependem do que elas disserem. Os números de custo são estimativas por contagem de operações, não medidas (incerteza de um fator 3 ou mais).
 
 ## Pergunta
 O que as rodadas 1 a 4 acharam no problema sintético (a média entre trabalhadores com dados diferentes protege a plasticidade, e a média de cópias não) vale em benchmarks reais de aprendizado contínuo, com redes e dados reais, e no mesmo nível de aprendizado da rede nova?
@@ -41,6 +41,16 @@ Leitura: só o Permuted MNIST cabe numa CPU do cluster; os outros três precisam
 
 ## Ameaças e decisões para o pré-registro
 Dados: baixar MNIST e CIFAR-10 (sem licença) e ImageNet reduzido (com licença) contraria a regra "nenhum download"; R diferente entre condições = passos totais diferentes; K = 10 e IID fixos; BatchNorm; otimizador (Adam do toy contra SGD com momento da Dohare); horizonte T e escala dos tarefas bem menores que os dos artigos (2000 a 5000 tarefas); a CNN de Dohare tem pooling de passo 1 (custo maior que o de uma CNN comum); reprodutibilidade em GPU; hiperparâmetros escolhidos numa só semente; previsão do autor.
+
+## Decisões do autor (2026-10-26)
+1. **Escopo:** começar por **Permuted MNIST e CIFAR-10**; o Continual ImageNet fica de fora até resolver a licença (e a regra de não baixar dados para ele).
+2. **Otimizador:** Adam como principal; um braço com **SGD com momento só no Permuted MNIST**.
+3. **Normalização:** **GroupNorm** no lugar de BatchNorm (resolve a média das estatísticas entre trabalhadores e a invariância de escala da norma).
+4. **Métrica:** **acurácia de treino como principal**, de teste como secundária.
+5. **Horizonte:** T menor que o dos artigos, desde que a regra do regime (perda de plasticidade do `sem_media_k1` na semente 1000) seja cumprida.
+6. **GPU:** a reprodutibilidade **não é bit a bit** (registrar no pré-registro) e se **compensa com mais sementes**.
+7. **Origem do protocolo de CIFAR-10 com rótulos aleatórios:** continua "a conferir".
+Consequência para o custo: sem o Continual ImageNet, ficam o Permuted MNIST (≈ 190 CPU-h, ou 1 a 7 GPU-h) e o CIFAR-10 (CNN: 3 a 17 GPU-h; ResNet-18: 21 a 140 GPU-h; com GroupNorm o custo não muda de forma relevante), mais as sementes extras.
 
 ## Previsão do autor (rodada 5)
 (a preencher pelo autor, antes de qualquer código da rodada 5)

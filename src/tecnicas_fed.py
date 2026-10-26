@@ -24,7 +24,7 @@ from src.modelo import MLP
 from src.tecnicas_local import (
     mascara_media, mascara_voto, montar_ajuste, redo_reiniciar, scores_neuronios, treinar_passos_ext,
 )
-from src.treino import shrink_and_perturb
+from src.treino import shrink_and_perturb, treinar_passos_geral
 
 TIPOS = ("fedavg", "fedprox", "scaffold", "fedrep", "gossip", "diloco")
 TOPOLOGIAS = ("anel", "grau4", "completo")
@@ -113,8 +113,8 @@ def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, 
         extra["redo_n"]["servidor"] += redo_reiniciar(modelo, masc, aux["redo"])
         antes = clonar_estado(modelo)
     vetor_global = _vetor_estado(antes)
-    H = tec["H"] if tipo == "diloco" else S_LOCAL
-    reset = H if tipo == "diloco" else S_LOCAL
+    H = tec["H"] if tipo == "diloco" else tec.get("S", S_LOCAL)      # "S": passos locais da rodada 3 (épocas fixas)
+    reset = H                                                         # Adam recriado a cada rodada, contínuo nos H passos
     rl = tec.get("redo_local")
     estados, ck_novos = [], []
     for k, p in enumerate(particoes):
@@ -128,7 +128,11 @@ def _rodada_media(modelo, extra, X, y, particoes, pesos, local, g, tec, aux, r, 
         corr = {n: est["c"][n] - est["ck"][k][n] for n, _ in local.named_parameters()} if tipo == "scaffold" else None
         l2 = (tec["l2init"], extra["theta0"]) if tec.get("l2init") is not None else None   # lam = 0 passa pelo ajuste (sanidade)
         ajuste = montar_ajuste(local, prox=prox, corr=corr, l2init=l2) if (prox or corr or l2) else None
-        treinar_passos_ext(local, X, y, p, H, BATCH, reset, g, wd=tec.get("wd", 0.0), ajuste=ajuste)
+        if len(p) % BATCH == 0:
+            treinar_passos_ext(local, X, y, p, H, BATCH, reset, g, wd=tec.get("wd", 0.0), ajuste=ajuste)
+        else:                                                         # n não múltiplo do lote (K = 20: 50 pontos): amostragem geral
+            assert ajuste is None and not tec.get("wd"), "ganchos só no caminho de n múltiplo do lote"
+            treinar_passos_geral(local, X, y, p, H, BATCH, g)
         estados.append(_clonar(local))
     agg = media_ponderada(estados, pesos)
     if tipo == "diloco":

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Uso interno (chamado por slurm/rodada2.sh, rodada2b.sh, rodada4a.sh e rodada4b.sh): submete UM job com nome, tempo e processos
+# Uso interno (chamado por slurm/rodada2.sh, rodada2b.sh, rodada3.sh, rodada4a.sh e rodada4b.sh): submete UM job com nome, tempo e processos
 # corretos para a rodada e a fase pedidas. Rode no headnode, de qualquer pasta.
 #   _submeter.sh <rodada: 2|2b|4a|4b> <fase: curto|longo> [--dry-run] [--forcar]
 set -uo pipefail
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
-RODADA="${1:?rodada 2|2b|4a|4b}"; FASE_ARG="${2:?fase curto|longo}"; shift 2
+RODADA="${1:?rodada 2|2b|3|4a|4b}"; FASE_ARG="${2:?fase curto|longo}"; shift 2
 DRY=0; FORCAR=0
 for a in "$@"; do
     case "$a" in
@@ -19,11 +19,13 @@ case "$RODADA" in
         T_CURTO="01:00:00"; T_LONGO="12:00:00" ;;
     2b) PREFIXO="r2b"; SBATCH="slurm/rodada2b.sbatch"; PASTA="results_rodada2b"
         T_CURTO="01:00:00"; T_LONGO="04:00:00" ;;
+    3)  PREFIXO="r3";  SBATCH="slurm/rodada4.sbatch"; PASTA="results_rodada3"       # o sbatch da rodada 4 serve à 3
+        T_CURTO="01:00:00"; T_LONGO="06:00:00" ;;
     4a) PREFIXO="r4a"; SBATCH="slurm/rodada4.sbatch"; PASTA="results_rodada4a"
         T_CURTO="01:00:00"; T_LONGO="12:00:00" ;;
     4b) PREFIXO="r4b"; SBATCH="slurm/rodada4.sbatch"; PASTA="results_rodada4b"
         T_CURTO="01:00:00"; T_LONGO="10:00:00" ;;
-    *)  echo "rodada inválida: $RODADA (use 2, 2b, 4a ou 4b)" >&2; exit 2 ;;
+    *)  echo "rodada inválida: $RODADA (use 2, 2b, 3, 4a ou 4b)" >&2; exit 2 ;;
 esac
 case "$FASE_ARG" in
     curto)             FASE="teste_curto"; NOME="${PREFIXO}_curto"; TEMPO="$T_CURTO"; PROC=8 ;;
@@ -46,7 +48,7 @@ if [[ "$FASE" == "completo" && $FORCAR -eq 0 ]] && ! head -1 "$PASTA/calibracao/
     exit 3
 fi
 
-if [[ "$RODADA" == 4* ]]; then
+if [[ "$RODADA" == 4* || "$RODADA" == 3 ]]; then
     CMD=(sbatch --job-name="$NOME" --time="$TEMPO" "$SBATCH" "$RODADA" "$FASE" "$PROC")     # o sbatch da rodada 4 recebe a parte
 else
     CMD=(sbatch --job-name="$NOME" --time="$TEMPO" "$SBATCH" "$FASE" "$PROC")

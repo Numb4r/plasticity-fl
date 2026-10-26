@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rodada 4 (4a e 4b) no cluster Recod. Use: bash slurm/rodada4a.sh curto|longo   ou   bash slurm/rodada4b.sh curto|longo
+# Rodadas 3, 4a e 4b no cluster Recod. Use: bash slurm/rodada3.sh curto|longo, rodada4a.sh ou rodada4b.sh
 # (o sbatch direto fica para depuração: sbatch --job-name=r4a_curto --time=01:00:00 slurm/rodada4.sbatch 4a teste_curto 8)
 # Um nó só (dl-01), CPU apenas, 1 thread por processo, como as rodadas 2 e 2b.
 #SBATCH --partition=l40s
@@ -10,7 +10,7 @@
 #SBATCH --mem=12G
 #SBATCH --output=logs/slurm-%x-%j.out
 set -uo pipefail
-PARTE="${1:?parte: 4a|4b}"
+PARTE="${1:?parte: 3|4a|4b}"
 FASE="${2:?fase: teste_curto|completo}"
 PROC="${3:-8}"
 ESPERADO="r${PARTE}_curto"; [[ "$FASE" == "completo" ]] && ESPERADO="r${PARTE}_longo"

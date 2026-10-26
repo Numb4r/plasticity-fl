@@ -118,3 +118,9 @@ GRADE_SP_TAREFA = (0.6, 0.8, 0.9, 0.95)
 GRADE_SP_RODADA = (0.99, 0.995, 0.999)        # exploratório
 GRADE_REDO_VOTO_Q = (0.5, 0.8)                # exploratório
 GRADE_L2_CENTRAL = (1e-6, 1e-5, 1e-4, 1e-3)   # referência central_L2 (grade estendida pelo autor)
+
+
+# --- Rodada 3 (PREREGISTRO.md, "Rodada 3 · Por que a média entre clientes com dados diferentes protege...") ---
+SEMENTES_R3 = (16, 17, 18, 19, 20, 21, 22, 23)
+KS_R3 = (2, 5, 10, 20)
+EPOCAS_LOCAIS_FIXAS = 3                       # braço secundário: S_local = ceil(3 * n / batch) passos por rodada

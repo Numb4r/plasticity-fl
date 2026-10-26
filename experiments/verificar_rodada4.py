@@ -112,7 +112,7 @@ def resumo_redo(dir_r4: Path, parte: str) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--parte", choices=["4a", "4b"], required=True)
+    ap.add_argument("--parte", choices=["3", "4a", "4b"], required=True)
     ap.add_argument("--saida", default=None)
     ap.add_argument("--log", default=None)
     a = ap.parse_args()
